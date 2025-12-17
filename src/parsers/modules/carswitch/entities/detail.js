@@ -146,11 +146,11 @@ class CarswitchDetailParser {
             );
 
             // Получаем сырой набор фич из Car details (новая структура)
-            const detailFeatures = await page.$$eval(
+            const detailFeatures = await page.$eval(
                 this.selectors.detailContainer,
-                items => {
+                (item) => {
                     const map = {};
-                    const text = items?.textContent?.trim();
+                    const text = item?.textContent?.trim();
                     if (text) {
                         // Парсим текст вида "First owner: No • Specs: GCC specs • More"
                         const parts = text.split('•');
@@ -163,7 +163,7 @@ class CarswitchDetailParser {
                     }
                     return map;
                 }
-            );
+            ).catch(() => ({})); // Возвращаем пустой объект если элемент не найден
 
             // Получаем параметры из модального окна
             const modalFeatures = await page.evaluate((selectors) => {
