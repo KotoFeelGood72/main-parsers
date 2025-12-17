@@ -1,7 +1,7 @@
 const { createBaseParser } = require('../../BaseParser');
 const { saveData } = require('../../../utils/saveData');
-const { CarswitchListingParser } = require('./entities/listing');
-const { CarswitchDetailParser } = require('./entities/detail');
+const { createCarswitchListingParser } = require('./entities/listing');
+const { createCarswitchDetailParser } = require('./entities/detail');
 const { delay } = require('../../utils/parserHelpers');
 
 /**
@@ -15,8 +15,8 @@ function createCarswitchParser(config) {
     };
 
     const baseParser = createBaseParser('Carswitch', parserConfig);
-    const listingParser = new CarswitchListingParser(parserConfig);
-    const detailParser = new CarswitchDetailParser(parserConfig);
+    const listingParser = createCarswitchListingParser(parserConfig);
+    const detailParser = createCarswitchDetailParser(parserConfig);
 
     /**
      * Получение списка объявлений

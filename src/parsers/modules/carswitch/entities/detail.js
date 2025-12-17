@@ -1,18 +1,21 @@
 const { telegramService } = require('../../../../services/TelegramService');
 
 /**
- * Парсинг детальной информации для Carswitch.com
+ * Парсинг детальной информации для Carswitch.com (функциональный подход)
  */
 
-class CarswitchDetailParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Счетчик ошибок для логирования
-        this.errorCount = 0;
-        
-        // Селекторы для детальной страницы
-        this.selectors = {
+/**
+ * Создание парсера детальной информации Carswitch
+ */
+function createCarswitchDetailParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Счетчик ошибок для логирования
+    let errorCount = 0;
+    
+    // Селекторы для детальной страницы
+    const selectors = {
             // Селекторы для кнопок открытия модального окна
             modalButtons: [
                 '.font-bold.rtl\\:-ml-12.text-primary-500.cursor-pointer',
@@ -45,7 +48,7 @@ class CarswitchDetailParser {
         };
         
         // Атрибуты для поиска изображений
-        this.imageAttributes = {
+        const imageAttributes = {
             year: ['Year', 'Год'],
             mileage: ['Mileage', 'Пробег'],
             location: ['Location', 'Локация'],
@@ -53,11 +56,11 @@ class CarswitchDetailParser {
         };
         
         // Дополнительные селекторы для поиска по атрибутам
-        this.selectors.allImages = 'img';
-        this.selectors.imageParentSpan = 'span';
+        selectors.allImages = 'img';
+        selectors.imageParentSpan = 'span';
         
         // Поля для извлечения данных
-        this.dataFields = {
+        const dataFields = {
             make: ['Make', 'Марка', 'Brand', 'brand'],
             model: ['Model', 'Модель', 'Car Model', 'car model'],
             bodyType: ['Body type', 'Body Type', 'Тип кузова', 'body type', 'Body', 'body', 'Vehicle Type', 'vehicle type'],
@@ -66,13 +69,11 @@ class CarswitchDetailParser {
             motorsTrim: ['Specs', 'Комплектация', 'Spec', 'spec', 'Specification', 'specification', 'Trim', 'trim', 'Variant', 'variant'],
             exteriorColor: ['Color', 'Цвет', 'Exterior Color', 'exterior color', 'Paint', 'paint', 'Exterior', 'exterior', 'Body Color', 'body color']
         };
-    }
-
 
     /**
      * Парсинг детальной страницы автомобиля
      */
-    async parseCarDetails(url, context) {
+    async function parseCarDetails(url, context) {
         const page = await context.newPage();
 
         try {
@@ -81,7 +82,7 @@ class CarswitchDetailParser {
 
             // Добавляем случайную задержку перед загрузкой
             const randomDelay = Math.floor(Math.random() * 1500) + 1000;
-            await this.sleep(randomDelay);
+            await sleep(randomDelay);
 
             await page.goto(url, {
                 waitUntil: "domcontentloaded",
@@ -94,7 +95,7 @@ class CarswitchDetailParser {
             // Кликаем на кнопку для открытия модального окна с детальными параметрами
             try {
                 let detailsButton = null;
-                for (const selector of this.selectors.modalButtons) {
+                for (const selector of selectors.modalButtons) {
                     detailsButton = await page.$(selector);
                     if (detailsButton) {
                         console.log("🔍 Кнопка найдена с селектором:", selector);
@@ -108,7 +109,7 @@ class CarswitchDetailParser {
                     await page.waitForTimeout(3000); // Увеличиваем время ожидания
                     
                     // Проверяем, открылось ли модальное окно
-                    const modal = await page.$(this.selectors.modal);
+                    const modal = await page.$(selectors.modal);
                     console.log("🔍 Модальное окно открыто:", !!modal);
                 } else {
                     console.log("⚠️ Кнопка для открытия модального окна не найдена ни с одним селектором");
@@ -129,7 +130,7 @@ class CarswitchDetailParser {
 
             // Получаем сырой набор фич из Car Overview (новая структура)
             const overviewFeatures = await page.$$eval(
-                this.selectors.overviewContainer,
+                selectors.overviewContainer,
                 (items, selectors) => {
                     const map = {};
                     items.forEach(item => {
@@ -140,14 +141,14 @@ class CarswitchDetailParser {
                     return map;
                 },
                 {
-                    key: this.selectors.overviewKey,
-                    value: this.selectors.overviewValue
+                    key: selectors.overviewKey,
+                    value: selectors.overviewValue
                 }
             );
 
             // Получаем сырой набор фич из Car details (новая структура)
             const detailFeatures = await page.$eval(
-                this.selectors.detailContainer,
+                selectors.detailContainer,
                 (item) => {
                     const map = {};
                     const text = item?.textContent?.trim();
@@ -190,8 +191,8 @@ class CarswitchDetailParser {
 
                 return map;
             }, {
-                modal: this.selectors.modal,
-                rows: this.selectors.modalRows
+                modal: selectors.modal,
+                rows: selectors.modalRows
             });
 
             // Объединяем их в одну карту
@@ -206,7 +207,7 @@ class CarswitchDetailParser {
             console.log("🔍 Параметры из модального окна:", modalFeatures);
 
             // Извлекаем основные поля
-            const title = await this.safeEval(page, this.selectors.title, el => el.textContent.trim()) || "Не указано";
+            const title = await safeEval(page, selectors.title, el => el.textContent.trim()) || "Не указано";
 
             // Отладочная информация для заголовка
             console.log("🔍 Извлеченный заголовок:", title);
@@ -221,7 +222,7 @@ class CarswitchDetailParser {
                     return nextSpan?.textContent?.trim() || null;
                 }
                 return null;
-            }, { yearAttrs: this.imageAttributes.year, selectors: this.selectors }) 
+            }, { yearAttrs: imageAttributes.year, selectors: selectors }) 
             const year = yearText ? yearText.replace(/\D/g, "") : null;
 
             // Извлекаем пробег - ищем span после изображения с alt="Mileage"
@@ -234,11 +235,11 @@ class CarswitchDetailParser {
                     return nextSpan?.textContent?.trim() || null;
                 }
                 return null;
-            }, { mileageAttrs: this.imageAttributes.mileage, selectors: this.selectors }) 
+            }, { mileageAttrs: imageAttributes.mileage, selectors: selectors }) 
             const kilometers = kmText || "0";
 
             // Извлекаем цену
-            const priceText = await this.safeEval(page, this.selectors.price, el => el.textContent) || "";
+            const priceText = await safeEval(page, selectors.price, el => el.textContent) || "";
             const priceFormatted = priceText.replace(/[^\d,]/g, "").trim();
             const priceRaw = priceFormatted ?
                 parseFloat(priceFormatted.replace(/,/g, "")) :
@@ -258,7 +259,7 @@ class CarswitchDetailParser {
                             .filter(src => src && (src.includes("carswitch.com") || src.includes("cloudfront.net")))
                     )
                 );
-            }, { carImageAttr: this.imageAttributes.carImage, selectors: this.selectors }) || [];
+            }, { carImageAttr: imageAttributes.carImage, selectors: selectors }) || [];
 
             // Извлекаем локацию - ищем span после изображения с alt="Location"
             const location = await page.evaluate(({ locationAttrs, selectors }) => {
@@ -270,7 +271,7 @@ class CarswitchDetailParser {
                     return nextSpan?.textContent?.trim() || null;
                 }
                 return null;
-            }, { locationAttrs: this.imageAttributes.location, selectors: this.selectors }) || "Не указано";
+            }, { locationAttrs: imageAttributes.location, selectors: selectors }) || "Не указано";
 
             // Данные о продавце (пока используем значения по умолчанию, так как структура изменилась)
             const sellerName = "CarSwitch";
@@ -285,13 +286,13 @@ class CarswitchDetailParser {
                 title,
                 photos,
                 main_image: photos.length > 0 ? photos[0] : null,
-                make: this.pick(rawFeatures, this.dataFields.make, title && title !== "Не указано" ? title.split(" ")[0] : "Не указано"),
-                model: this.pick(rawFeatures, this.dataFields.model, title && title !== "Не указано" ? title.replace(/^\S+\s*/, "") : "Не указано"),
+                make: pick(rawFeatures, dataFields.make, title && title !== "Не указано" ? title.split(" ")[0] : "Не указано"),
+                model: pick(rawFeatures, dataFields.model, title && title !== "Не указано" ? title.replace(/^\S+\s*/, "") : "Не указано"),
                 year,
-                body_type: this.pick(rawFeatures, this.dataFields.bodyType, "Не указано"),
-                horsepower: this.pick(rawFeatures, this.dataFields.horsepower, null),
-                fuel_type: this.pick(rawFeatures, this.dataFields.fuelType, "Не указано"),
-                motors_trim: this.pick(rawFeatures, this.dataFields.motorsTrim, "Не указано"),
+                body_type: pick(rawFeatures, dataFields.bodyType, "Не указано"),
+                horsepower: pick(rawFeatures, dataFields.horsepower, null),
+                fuel_type: pick(rawFeatures, dataFields.fuelType, "Не указано"),
+                motors_trim: pick(rawFeatures, dataFields.motorsTrim, "Не указано"),
                 kilometers,
                 sellers: {
                     sellerName,
@@ -304,7 +305,7 @@ class CarswitchDetailParser {
                     raw: priceRaw,
                     currency: "AED",
                 },
-                exterior_color: this.pick(rawFeatures, this.dataFields.exteriorColor, "Не указано"),
+                exterior_color: pick(rawFeatures, dataFields.exteriorColor, "Не указано"),
                 location,
                 contact: {
                     phone: phoneNumber,
@@ -313,7 +314,7 @@ class CarswitchDetailParser {
 
             // Закрываем модальное окно если оно открыто
             try {
-                const closeButton = await page.$(this.selectors.closeButton);
+                const closeButton = await page.$(selectors.closeButton);
                 if (closeButton) {
                     await closeButton.click();
                     await page.waitForTimeout(500);
@@ -326,12 +327,12 @@ class CarswitchDetailParser {
             return carDetails;
 
         } catch (error) {
-            this.errorCount++;
+            errorCount++;
             console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
             
             // Отправляем уведомление в Telegram при критических ошибках
-            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
-                await this.sendErrorNotification(url, error);
+            if (telegramService.getStatus().enabled && errorCount % 10 === 0) {
+                await sendErrorNotification(url, error);
             }
             
             return null;
@@ -343,7 +344,7 @@ class CarswitchDetailParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(url, error) {
+    async function sendErrorNotification(url, error) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -351,7 +352,7 @@ class CarswitchDetailParser {
                           `URL: ${url}\n` +
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
-                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Всего ошибок: ${errorCount}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -363,7 +364,7 @@ class CarswitchDetailParser {
     /**
      * Безопасное выполнение eval на странице
      */
-    async safeEval(page, selector, fn) {
+    async function safeEval(page, selector, fn) {
         try {
             return await page.$eval(selector, fn);
         } catch {
@@ -374,7 +375,7 @@ class CarswitchDetailParser {
     /**
      * Выбор первого непустого значения из объекта
      */
-    pick(map, keys, def = null) {
+    function pick(map, keys, def = null) {
         for (const k of keys) {
             if (map[k] != null) return map[k];
         }
@@ -384,9 +385,18 @@ class CarswitchDetailParser {
     /**
      * Утилита для паузы
      */
-    sleep(ms) {
+    function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+
+    // Возвращаем объект с методами
+    return {
+        parseCarDetails,
+        sendErrorNotification,
+        safeEval,
+        pick,
+        sleep
+    };
 }
 
-module.exports = { CarswitchDetailParser };
+module.exports = { createCarswitchDetailParser };

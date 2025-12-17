@@ -1,6 +1,6 @@
 const { createBaseParser } = require('../../BaseParser');
-const { DubizzleListingParser } = require('./entities/listing');
-const { DubizzleDetailParser } = require('./entities/detail');
+const { createDubizzleListingParser } = require('./entities/listing');
+const { createDubizzleDetailParser } = require('./entities/detail');
 const { saveData } = require('../../../utils/saveData');
 const { delay } = require('../../utils/parserHelpers');
 
@@ -19,8 +19,8 @@ function createDubizzleParser(config = {}) {
     };
 
     const baseParser = createBaseParser('Dubizzle', parserConfig);
-    const listingParser = new DubizzleListingParser(parserConfig);
-    const detailParser = new DubizzleDetailParser(parserConfig);
+    const listingParser = createDubizzleListingParser(parserConfig);
+    const detailParser = createDubizzleDetailParser(parserConfig);
 
     /**
      * Получение списка объявлений

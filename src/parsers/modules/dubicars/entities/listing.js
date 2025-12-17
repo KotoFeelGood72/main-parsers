@@ -2,36 +2,38 @@ const { telegramService } = require('../../../../services/TelegramService');
 const { paginatePages } = require('../../../utils/pagination');
 
 /**
- * Парсинг списка объявлений для Dubicars.com
+ * Парсинг списка объявлений для Dubicars.com (функциональный подход)
  */
 
-class DubicarsListingParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Основные селекторы для Dubicars
-        this.listingSelector = 'section#serp-list li.serp-list-item a.image-container';
-        
-        // Селекторы для скролла
-        this.scrollContainers = [
-            'section#serp-list',
-            'main',
-            'body'
-        ];
-        
-        // Селекторы для пагинации
-        this.selectors = {
-            pagination: '.pagination, .pager, [class*="pagination"], [class*="pager"]',
-            nextButton: 'a[aria-label*="Next"], a[aria-label*="next"], .next, [class*="next"]',
-            activePage: '.pagination .active, .pager .active, [class*="active"]',
-            paginationLinks: 'a, button'
-        };
-    }
+/**
+ * Создание парсера списка объявлений Dubicars
+ */
+function createDubicarsListingParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Основные селекторы для Dubicars
+    const listingSelector = 'section#serp-list li.serp-list-item a.image-container';
+    
+    // Селекторы для скролла
+    const scrollContainers = [
+        'section#serp-list',
+        'main',
+        'body'
+    ];
+    
+    // Селекторы для пагинации
+    const selectors = {
+        pagination: '.pagination, .pager, [class*="pagination"], [class*="pager"]',
+        nextButton: 'a[aria-label*="Next"], a[aria-label*="next"], .next, [class*="next"]',
+        activePage: '.pagination .active, .pager .active, [class*="active"]',
+        paginationLinks: 'a, button'
+    };
 
     /**
      * Создание новой страницы с настройками
      */
-    async createPage(context) {
+    async function createPage(context) {
         const page = await context.newPage();
         
         // Оптимизация: блокируем все ненужные ресурсы для ускорения
@@ -40,7 +42,7 @@ class DubicarsListingParser {
             const url = route.request().url();
             
             // Блокируем изображения
-            if (resourceType === 'image' && !this.config.enableImageLoading) {
+            if (resourceType === 'image' && !parserConfig.enableImageLoading) {
                 route.abort();
                 return;
             }
@@ -66,18 +68,18 @@ class DubicarsListingParser {
     /**
      * Получение списка объявлений
      */
-    async* getListings(context) {
+    async function* getListings(context) {
         let attempt = 0;
         let currentPage = 1;
         // Увеличиваем лимит страниц: если на сайте 26,245 результатов и по ~20-30 на странице, нужно ~1300 страниц
         const maxPages = 2000; // Увеличенный лимит для больших каталогов
-        const timeout = this.config.timeout || 60000; // Используем timeout из конфигурации
+        const timeout = parserConfig.timeout || 60000; // Используем timeout из конфигурации
         const processedLinks = new Set(); // Отслеживаем уже обработанные ссылки
         let emptyPagesCount = 0; // Счетчик пустых страниц подряд
         const maxEmptyPages = 3; // Максимум пустых страниц подряд перед остановкой
         
         // Статистика для логирования
-        this.stats = {
+        const stats = {
             startTime: Date.now(),
             totalFound: 0,
             totalUnique: 0,
@@ -89,15 +91,15 @@ class DubicarsListingParser {
         };
 
         // Интервал для отправки уведомлений в Telegram (каждые N страниц)
-        this.telegramNotificationInterval = this.config.telegramNotificationInterval || 10;
+        const telegramNotificationInterval = parserConfig.telegramNotificationInterval || 10;
 
         // Отправляем уведомление о старте парсинга списка
         if (telegramService.getStatus().enabled) {
-            await this.sendProgressNotification('start', 1, 0);
+            await sendProgressNotification('start', 1, 0, stats);
         }
 
-        while (attempt < this.config.maxRetries) {
-            const page = await this.createPage(context);
+        while (attempt < parserConfig.maxRetries) {
+            const page = await createPage(context);
 
             try {
                 console.log("=".repeat(80));
@@ -108,8 +110,8 @@ class DubicarsListingParser {
 
                 // Используем утилиту пагинации с кастомным формированием URL
                 for await (const { page: paginationPage, pageNumber, url, hasContent } of paginatePages(context, {
-                    baseUrl: this.config.listingsUrl,
-                    contentSelector: this.listingSelector,
+                    baseUrl: parserConfig.listingsUrl,
+                    contentSelector: listingSelector,
                     urlOptions: {
                         pageParam: 'page',
                         separator: '?',
@@ -133,22 +135,22 @@ class DubicarsListingParser {
                     
                     // Логируем прогресс каждые 10 страниц
                     if (currentPage % 10 === 0 || currentPage === 1) {
-                        const elapsed = Math.round((Date.now() - this.stats.startTime) / 1000);
-                        const pagesPerSec = this.stats.totalPagesProcessed > 0 ? (this.stats.totalPagesProcessed / elapsed).toFixed(2) : 0;
-                        const linksPerSec = this.stats.totalUnique > 0 ? (this.stats.totalUnique / elapsed).toFixed(2) : 0;
+                        const elapsed = Math.round((Date.now() - stats.startTime) / 1000);
+                        const pagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / elapsed).toFixed(2) : 0;
+                        const linksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / elapsed).toFixed(2) : 0;
                         console.log("─".repeat(80));
                         console.log(`📊 ПРОГРЕСС ПАРСИНГА (страница ${currentPage}):`);
-                        console.log(`   📄 Обработано страниц: ${this.stats.totalPagesProcessed}`);
-                        console.log(`   🔗 Найдено объявлений: ${this.stats.totalFound}`);
-                        console.log(`   ✅ Уникальных: ${this.stats.totalUnique}`);
-                        console.log(`   🔄 Дубликатов: ${this.stats.totalDuplicates}`);
+                        console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
+                        console.log(`   🔗 Найдено объявлений: ${stats.totalFound}`);
+                        console.log(`   ✅ Уникальных: ${stats.totalUnique}`);
+                        console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
                         console.log(`   ⏱️  Время работы: ${elapsed}с (${pagesPerSec} стр/с, ${linksPerSec} объяв/с)`);
                         console.log("─".repeat(80));
                     }
 
                     // Отправляем уведомление в Telegram каждые N страниц
-                    if (telegramService.getStatus().enabled && currentPage % this.telegramNotificationInterval === 0) {
-                        await this.sendProgressNotification('progress', currentPage, this.stats.totalUnique);
+                    if (telegramService.getStatus().enabled && currentPage % telegramNotificationInterval === 0) {
+                        await sendProgressNotification('progress', currentPage, stats.totalUnique, stats);
                     }
 
                     try {
@@ -158,12 +160,12 @@ class DubicarsListingParser {
                             continue;
                         }
                     } catch (navigationError) {
-                        this.stats.totalErrors++;
+                        stats.totalErrors++;
                         const pageLoadTime = Date.now() - pageStartTime;
                         
                         // Отправляем уведомление об ошибке в Telegram
                         if (telegramService.getStatus().enabled) {
-                            await this.sendErrorNotification(currentPage, navigationError, url);
+                            await sendErrorNotification(currentPage, navigationError, url, false, stats);
                         }
                         // Обработка ошибок загрузки страницы
                         if (navigationError.name === 'TimeoutError') {
@@ -189,7 +191,7 @@ class DubicarsListingParser {
                         continue;
                     }
                     
-                    this.stats.totalPagesProcessed++;
+                    stats.totalPagesProcessed++;
                     const pageLoadTime = Date.now() - pageStartTime;
                     if (pageLoadTime > 5000) {
                         console.log(`⏱️ [${currentPage}] Страница загружена за ${pageLoadTime}ms (медленно)`);
@@ -197,7 +199,7 @@ class DubicarsListingParser {
 
                     // Ждём основной список машин с обработкой таймаута
                     try {
-                        await paginationPage.waitForSelector(this.listingSelector, { timeout: 15000 });
+                        await paginationPage.waitForSelector(listingSelector, { timeout: 15000 });
                     } catch (selectorError) {
                         if (selectorError.name === 'TimeoutError') {
                             console.warn(`⏱️ Селектор не найден на странице ${currentPage}, пропускаем...`);
@@ -229,7 +231,7 @@ class DubicarsListingParser {
                     }
 
                     // Скроллим страницу для подгрузки всех карточек
-                    await this.autoScroll(page);
+                    await autoScroll(page);
                     await paginationPage.waitForTimeout(1000); // Увеличиваем задержку для полной загрузки
 
                     // Ищем объявления с основным селектором и альтернативными
@@ -238,7 +240,7 @@ class DubicarsListingParser {
                     try {
                         // Основной селектор
                         carLinks = await paginationPage.$$eval(
-                            this.listingSelector,
+                            listingSelector,
                             (elements, baseUrl) =>
                                 elements
                                     .map((el) => {
@@ -250,7 +252,7 @@ class DubicarsListingParser {
                                         return baseUrl + '/' + href;
                                     })
                                     .filter((href) => href && (href.startsWith(baseUrl) || href.includes('/dubai/used/'))),
-                            this.config.baseUrl
+                            parserConfig.baseUrl
                         );
                         
                         if (carLinks.length > 0) {
@@ -284,7 +286,7 @@ class DubicarsListingParser {
                                                 })
                                                 .filter((href) => href && (href.startsWith(baseUrl) || href.includes('/dubai/used/')))
                                                 .filter((href, index, self) => self.indexOf(href) === index), // Убираем дубликаты
-                                        this.config.baseUrl
+                                        parserConfig.baseUrl
                                     );
                                     
                                     if (altLinks.length > 0) {
@@ -306,7 +308,7 @@ class DubicarsListingParser {
                         const pageProcessTime = Date.now() - pageStartTime;
                         console.warn(`⚠️ [${currentPage}] ПУСТАЯ СТРАНИЦА: не найдено объявлений (время загрузки: ${pageProcessTime}ms)`);
                         emptyPagesCount++;
-                        this.stats.totalPagesProcessed++;
+                        stats.totalPagesProcessed++;
                         
                         // Проверяем наличие пагинации или следующей страницы
                         const hasNextPage = await paginationPage.evaluate((selectors) => {
@@ -323,14 +325,14 @@ class DubicarsListingParser {
                                 .sort((a, b) => b - a)[0] || 0;
                             
                             return nextButton !== null || (currentPageNum > 0 && currentPageNum < lastPageNum);
-                        });
+                        }, selectors);
                         
                         if (!hasNextPage && emptyPagesCount >= maxEmptyPages) {
-                            this.stats.stopReason = `Нет следующей страницы и подряд ${maxEmptyPages} пустых страниц`;
-                            console.log(`🏁 ОСТАНОВКА: ${this.stats.stopReason}`);
+                            stats.stopReason = `Нет следующей страницы и подряд ${maxEmptyPages} пустых страниц`;
+                            console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
                             
                             if (telegramService.getStatus().enabled) {
-                                await this.sendProgressNotification('end', currentPage, this.stats.totalUnique);
+                                await sendProgressNotification('end', currentPage, stats.totalUnique, stats);
                             }
                             break;
                         }
@@ -349,16 +351,16 @@ class DubicarsListingParser {
 
                     // Сбрасываем счетчик пустых страниц, если нашли объявления
                     emptyPagesCount = 0;
-                    this.stats.totalPagesProcessed++;
+                    stats.totalPagesProcessed++;
 
                     // Фильтруем дубликаты
                     const newLinks = carLinks.filter(link => !processedLinks.has(link));
                     const duplicatesCount = carLinks.length - newLinks.length;
                     
                     // Обновляем статистику
-                    this.stats.totalFound += carLinks.length;
-                    this.stats.totalDuplicates += duplicatesCount;
-                    this.stats.totalUnique += newLinks.length;
+                    stats.totalFound += carLinks.length;
+                    stats.totalDuplicates += duplicatesCount;
+                    stats.totalUnique += newLinks.length;
 
                     if (duplicatesCount > 0) {
                         console.log(`🔄 [${currentPage}] Найдено ${duplicatesCount} дубликатов (новых: ${newLinks.length}, всего на странице: ${carLinks.length})`);
@@ -368,11 +370,11 @@ class DubicarsListingParser {
                         console.log(`⚠️ [${currentPage}] Все объявления уже обработаны (найдено: ${carLinks.length}, дубликатов: ${duplicatesCount})`);
                         emptyPagesCount++;
                         if (emptyPagesCount >= maxEmptyPages) {
-                            this.stats.stopReason = `Подряд ${maxEmptyPages} страниц без новых объявлений`;
-                            console.log(`🏁 ОСТАНОВКА: ${this.stats.stopReason}`);
+                            stats.stopReason = `Подряд ${maxEmptyPages} страниц без новых объявлений`;
+                            console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
                             
                             if (telegramService.getStatus().enabled) {
-                                await this.sendProgressNotification('end', currentPage, this.stats.totalUnique);
+                                await sendProgressNotification('end', currentPage, stats.totalUnique, stats);
                             }
                             break;
                         }
@@ -382,7 +384,7 @@ class DubicarsListingParser {
 
                     const pageProcessTime = Date.now() - pageStartTime;
                     console.log(`✅ [${currentPage}] Найдено ${newLinks.length} новых объявлений (всего: ${carLinks.length}, дубликатов: ${duplicatesCount}, время: ${pageProcessTime}ms)`);
-                    console.log(`   📈 Общая статистика: уникальных=${this.stats.totalUnique}, дубликатов=${this.stats.totalDuplicates}, найдено=${this.stats.totalFound}`);
+                    console.log(`   📈 Общая статистика: уникальных=${stats.totalUnique}, дубликатов=${stats.totalDuplicates}, найдено=${stats.totalFound}`);
                     
                     // Логируем первые несколько ссылок для отладки (только на первых страницах)
                     if (newLinks.length > 0 && currentPage <= 3) {
@@ -409,40 +411,40 @@ class DubicarsListingParser {
                 }
 
                 // Финальная статистика
-                const totalTime = Math.round((Date.now() - this.stats.startTime) / 1000);
-                const avgPagesPerSec = this.stats.totalPagesProcessed > 0 ? (this.stats.totalPagesProcessed / totalTime).toFixed(2) : 0;
-                const avgLinksPerSec = this.stats.totalUnique > 0 ? (this.stats.totalUnique / totalTime).toFixed(2) : 0;
+                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
+                const avgPagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / totalTime).toFixed(2) : 0;
+                const avgLinksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / totalTime).toFixed(2) : 0;
                 
                 console.log("=".repeat(80));
                 console.log(`🏁 ЗАВЕРШЕНИЕ ПАРСИНГА DUBICARS`);
                 console.log(`⏰ Время завершения: ${new Date().toLocaleString('ru-RU')}`);
                 console.log(`⏱️  Общее время работы: ${totalTime}с (${Math.floor(totalTime / 60)}м ${totalTime % 60}с)`);
                 console.log(`📊 ФИНАЛЬНАЯ СТАТИСТИКА:`);
-                console.log(`   📄 Обработано страниц: ${this.stats.totalPagesProcessed}`);
-                console.log(`   🔗 Всего найдено объявлений: ${this.stats.totalFound}`);
-                console.log(`   ✅ Уникальных объявлений: ${this.stats.totalUnique}`);
-                console.log(`   🔄 Дубликатов: ${this.stats.totalDuplicates}`);
-                console.log(`   ⚠️  Ошибок: ${this.stats.totalErrors}`);
+                console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
+                console.log(`   🔗 Всего найдено объявлений: ${stats.totalFound}`);
+                console.log(`   ✅ Уникальных объявлений: ${stats.totalUnique}`);
+                console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
+                console.log(`   ⚠️  Ошибок: ${stats.totalErrors}`);
                 console.log(`   📈 Производительность: ${avgPagesPerSec} стр/с, ${avgLinksPerSec} объяв/с`);
-                console.log(`   🛑 Причина остановки: ${this.stats.stopReason || 'Успешное завершение'}`);
+                console.log(`   🛑 Причина остановки: ${stats.stopReason || 'Успешное завершение'}`);
                 console.log(`   📍 Последняя страница: ${currentPage - 1}`);
                 console.log("=".repeat(80));
 
                 if (telegramService.getStatus().enabled) {
-                    await this.sendProgressNotification('end', currentPage - 1, this.stats.totalUnique);
+                    await sendProgressNotification('end', currentPage - 1, stats.totalUnique, stats);
                 }
                 
                 break; // Успешно завершили парсинг
             } catch (error) {
-                this.stats.totalErrors++;
-                const totalTime = Math.round((Date.now() - this.stats.startTime) / 1000);
+                stats.totalErrors++;
+                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
                 console.error("=".repeat(80));
                 console.error(`❌ КРИТИЧЕСКАЯ ОШИБКА при парсинге страницы ${currentPage}`);
                 console.error(`   Ошибка: ${error.name} - ${error.message}`);
                 console.error(`   Время работы до ошибки: ${totalTime}с`);
-                console.error(`   Обработано страниц: ${this.stats.totalPagesProcessed}`);
-                console.error(`   Найдено объявлений: ${this.stats.totalUnique}`);
-                console.error(`   Попытка: ${attempt + 1}/${this.config.maxRetries}`);
+                console.error(`   Обработано страниц: ${stats.totalPagesProcessed}`);
+                console.error(`   Найдено объявлений: ${stats.totalUnique}`);
+                console.error(`   Попытка: ${attempt + 1}/${parserConfig.maxRetries}`);
                 if (error.stack) {
                     console.error(`   Стек: ${error.stack.split('\n').slice(0, 3).join('\n   ')}`);
                 }
@@ -450,19 +452,19 @@ class DubicarsListingParser {
                 
                 // Отправляем уведомление о критической ошибке
                 if (telegramService.getStatus().enabled) {
-                    await this.sendErrorNotification(currentPage, error, 'unknown', attempt + 1 >= this.config.maxRetries);
+                    await sendErrorNotification(currentPage, error, 'unknown', attempt + 1 >= parserConfig.maxRetries, stats);
                 }
                 
                 attempt++;
                 
-                if (attempt >= this.config.maxRetries) {
-                    this.stats.stopReason = `Достигнут лимит повторных попыток (${this.config.maxRetries})`;
-                    console.error(`❌ ОСТАНОВКА: ${this.stats.stopReason}`);
+                if (attempt >= parserConfig.maxRetries) {
+                    stats.stopReason = `Достигнут лимит повторных попыток (${parserConfig.maxRetries})`;
+                    console.error(`❌ ОСТАНОВКА: ${stats.stopReason}`);
                     throw error;
                 }
                 
-                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries} через ${this.config.retryDelay || 5000}ms...`);
-                await this.sleep(this.config.retryDelay || 5000);
+                console.log(`🔄 Повторная попытка ${attempt}/${parserConfig.maxRetries} через ${parserConfig.retryDelay || 5000}ms...`);
+                await sleep(parserConfig.retryDelay || 5000);
             } finally {
                 try {
                     await page.close();
@@ -476,7 +478,7 @@ class DubicarsListingParser {
     /**
      * Автоматический скролл для подгрузки контента
      */
-    async autoScroll(page) {
+    async function autoScroll(page) {
         await page.evaluate(async (scrollContainers) => {
             const container = scrollContainers.find(c => document.querySelector(c) !== null);
             if (!container) return;
@@ -506,18 +508,18 @@ class DubicarsListingParser {
                     }
                 }, 200); // Уменьшили интервал
             });
-        }, this.scrollContainers);
+        }, scrollContainers);
     }
 
     /**
      * Отправка уведомления о прогрессе в Telegram
      */
-    async sendProgressNotification(type, page, listingsCount) {
+    async function sendProgressNotification(type, page, listingsCount, stats) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
-            const duration = this.stats.startTime 
-                ? Math.round((Date.now() - this.stats.startTime) / 1000 / 60) 
+            const duration = stats && stats.startTime 
+                ? Math.round((Date.now() - stats.startTime) / 1000 / 60) 
                 : 0;
 
             let message = '';
@@ -530,14 +532,14 @@ class DubicarsListingParser {
                 message = `📊 *Dubicars: Прогресс парсинга*\n\n` +
                          `Страниц обработано: ${page}\n` +
                          `Объявлений найдено: ${listingsCount}\n` +
-                         `Ошибок: ${this.stats.totalErrors}\n` +
+                         `Ошибок: ${stats ? stats.totalErrors : 0}\n` +
                          `Время работы: ${duration} мин\n` +
                          `Время: ${new Date().toLocaleString('ru-RU')}`;
             } else if (type === 'end') {
                 message = `✅ *Dubicars: Парсинг завершен*\n\n` +
                          `Всего страниц: ${page}\n` +
                          `Всего объявлений: ${listingsCount}\n` +
-                         `Ошибок: ${this.stats.totalErrors}\n` +
+                         `Ошибок: ${stats ? stats.totalErrors : 0}\n` +
                          `Время работы: ${duration} мин\n` +
                          `Время: ${new Date().toLocaleString('ru-RU')}`;
             }
@@ -553,7 +555,7 @@ class DubicarsListingParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(page, error, url = 'unknown', isCritical = false) {
+    async function sendErrorNotification(page, error, url = 'unknown', isCritical = false, stats = null) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -563,7 +565,7 @@ class DubicarsListingParser {
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
                           (url !== 'unknown' ? `URL: ${url}\n` : '') +
-                          `Всего ошибок: ${this.stats.totalErrors}\n` +
+                          `Всего ошибок: ${stats ? stats.totalErrors : 0}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -575,9 +577,19 @@ class DubicarsListingParser {
     /**
      * Утилита для паузы
      */
-    sleep(ms) {
+    function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+
+    // Возвращаем объект с методами
+    return {
+        getListings,
+        createPage,
+        autoScroll,
+        sendProgressNotification,
+        sendErrorNotification,
+        sleep
+    };
 }
 
-module.exports = { DubicarsListingParser };
+module.exports = { createDubicarsListingParser };

@@ -1,19 +1,22 @@
 const { telegramService } = require('../../../../services/TelegramService');
 
 /**
- * Парсинг детальной информации для Dubizzle.com
+ * Парсинг детальной информации для Dubizzle.com (функциональный подход)
  */
 
-class DubizzleDetailParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Счетчик ошибок для логирования
-        this.errorCount = 0;
-        
-        // Селекторы для детальной страницы Dubizzle
-        // Используем более общие селекторы, так как data-testid может отсутствовать
-        this.selectors = {
+/**
+ * Создание парсера детальной информации Dubizzle
+ */
+function createDubizzleDetailParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Счетчик ошибок для логирования
+    let errorCount = 0;
+    
+    // Селекторы для детальной страницы Dubizzle
+    // Используем более общие селекторы, так как data-testid может отсутствовать
+    const selectors = {
             // Основные данные
             title: 'h1, [class*="title"], [class*="ad-title"]',
             titleDataTestid: '[data-testid="listing-name"]',
@@ -51,7 +54,7 @@ class DubizzleDetailParser {
         };
         
         // Поля для извлечения данных
-        this.dataFields = {
+        const dataFields = {
             make: ['Make', 'Марка', 'Brand', 'brand'],
             model: ['Model', 'Модель', 'Car Model', 'car model'],
             bodyType: ['Body type', 'Body Type', 'Тип кузова', 'body type', 'Body', 'body'],
@@ -59,12 +62,11 @@ class DubizzleDetailParser {
             transmission: ['Transmission', 'Коробка передач', 'Gear', 'gear'],
             color: ['Color', 'Цвет', 'Exterior Color', 'exterior color']
         };
-    }
 
     /**
      * Парсинг детальной страницы автомобиля
      */
-    async parseCarDetails(url, context) {
+    async function parseCarDetails(url, context) {
         const page = await context.newPage();
 
         try {
@@ -85,7 +87,7 @@ class DubizzleDetailParser {
             let phoneNumber = "Не указан";
             try {
                 // Метод 1: Ищем кнопку "Call" или "Show Phone"
-                let callButton = await page.$(this.selectors.callButtonDataTestid);
+                let callButton = await page.$(selectors.callButtonDataTestid);
                 
                 // Если не нашли, ищем кнопки по тексту
                 if (!callButton) {
@@ -305,7 +307,7 @@ class DubizzleDetailParser {
                 }
                 
                 return data;
-            }, this.selectors);
+            }, selectors);
             
             // Парсим полученные данные
             const title = pageData.title || "Не указано";
@@ -385,12 +387,12 @@ class DubizzleDetailParser {
             return carDetails;
 
         } catch (error) {
-            this.errorCount++;
+            errorCount++;
             console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
             
             // Отправляем уведомление в Telegram при критических ошибках
-            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
-                await this.sendErrorNotification(url, error);
+            if (telegramService.getStatus().enabled && errorCount % 10 === 0) {
+                await sendErrorNotification(url, error);
             }
             
             return null;
@@ -402,7 +404,7 @@ class DubizzleDetailParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(url, error) {
+    async function sendErrorNotification(url, error) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -410,7 +412,7 @@ class DubizzleDetailParser {
                           `URL: ${url}\n` +
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
-                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Всего ошибок: ${errorCount}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -422,7 +424,7 @@ class DubizzleDetailParser {
     /**
      * Безопасное выполнение eval на странице
      */
-    async safeEval(page, selector, fn) {
+    async function safeEval(page, selector, fn) {
         try {
             return await page.$eval(selector, fn);
         } catch {
@@ -433,7 +435,7 @@ class DubizzleDetailParser {
     /**
      * Выбор первого непустого значения из объекта
      */
-    pick(map, keys, def = null) {
+    function pick(map, keys, def = null) {
         for (const k of keys) {
             if (map[k] != null) return map[k];
         }
@@ -443,7 +445,7 @@ class DubizzleDetailParser {
     /**
      * Извлечение спецификации из pageData
      */
-    extractSpec(pageData, keywords) {
+    function extractSpec(pageData, keywords) {
         if (!pageData.specs) return null;
         
         for (const keyword of keywords) {
@@ -459,7 +461,7 @@ class DubizzleDetailParser {
     /**
      * Извлечение make/model/year
      */
-    extractMakeModelYear(pageData, type) {
+    function extractMakeModelYear(pageData, type) {
         if (!pageData.specs) return null;
         
         const keywords = {
@@ -468,8 +470,18 @@ class DubizzleDetailParser {
             year: ['year', 'год', 'года']
         };
         
-        return this.extractSpec(pageData, keywords[type] || []);
+        return extractSpec(pageData, keywords[type] || []);
     }
+
+    // Возвращаем объект с методами
+    return {
+        parseCarDetails,
+        sendErrorNotification,
+        safeEval,
+        pick,
+        extractSpec,
+        extractMakeModelYear
+    };
 }
 
-module.exports = { DubizzleDetailParser };
+module.exports = { createDubizzleDetailParser };

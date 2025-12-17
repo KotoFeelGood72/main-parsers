@@ -1,6 +1,6 @@
 const { createBaseParser } = require('../../BaseParser');
-const { AutotradersListingParser } = require('./entities/listing');
-const { AutotradersDetailParser } = require('./entities/detail');
+const { createAutotradersListingParser } = require('./entities/listing');
+const { createAutotradersDetailParser } = require('./entities/detail');
 const { saveData } = require('../../../utils/saveData');
 
 /**
@@ -18,8 +18,8 @@ function createAutotradersParser(config = {}) {
     };
 
     const baseParser = createBaseParser('AutoTraders', parserConfig);
-    const listingParser = new AutotradersListingParser(parserConfig);
-    const detailParser = new AutotradersDetailParser(parserConfig);
+    const listingParser = createAutotradersListingParser(parserConfig);
+    const detailParser = createAutotradersDetailParser(parserConfig);
 
     /**
      * Получение списка объявлений

@@ -2,64 +2,62 @@ const { telegramService } = require('../../../../services/TelegramService');
 const { paginatePages } = require('../../../utils/pagination');
 
 /**
- * Парсинг списка объявлений для Sharrai.ae
+ * Парсинг списка объявлений для Sharrai.ae (функциональный подход)
  */
 
-class SharraiListingParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Статистика для логирования
-        this.stats = {
-            totalPages: 0,
-            totalListings: 0,
-            errors: 0,
-            startTime: null
-        };
-
-        // Максимальное количество страниц (защита от бесконечного цикла)
-        this.maxPages = config.maxPages || 100;
-        
-        // Интервал для отправки уведомлений в Telegram (каждые N страниц)
-        this.telegramNotificationInterval = this.config.telegramNotificationInterval || 10;
-        
-        // Основные селекторы для Sharrai
-        this.listingSelector = '.car-card, .listing-item, [class*="car-item"], [class*="listing-card"]';
-        this.listingLinkSelector = 'a[href*="/car/"], a[href*="/vehicle/"], a[href*="/detail/"]';
-        
-        // Селекторы для скролла
-        this.scrollContainers = [
-            'main',
-            '.search-results',
-            '.listings-container',
-            "body"
-        ];
-    }
+/**
+ * Создание парсера списка объявлений Sharrai
+ */
+function createSharraiListingParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Максимальное количество страниц (защита от бесконечного цикла)
+    const maxPages = config.maxPages || 100;
+    
+    // Интервал для отправки уведомлений в Telegram (каждые N страниц)
+    const telegramNotificationInterval = config.telegramNotificationInterval || 10;
+    
+    // Основные селекторы для Sharrai
+    const listingSelector = '.car-card, .listing-item, [class*="car-item"], [class*="listing-card"]';
+    const listingLinkSelector = 'a[href*="/car/"], a[href*="/vehicle/"], a[href*="/detail/"]';
+    
+    // Селекторы для скролла
+    const scrollContainers = [
+        'main',
+        '.search-results',
+        '.listings-container',
+        "body"
+    ];
 
     /**
      * Получение списка объявлений
      */
-    async* getListings(context) {
+    async function* getListings(context) {
         let attempt = 0;
         let currentPage = 1;
-        this.stats.startTime = Date.now();
-        this.stats.totalPages = 0;
-        this.stats.totalListings = 0;
-        this.stats.errors = 0;
+        
+        // Статистика для логирования
+        const stats = {
+            totalPages: 0,
+            totalListings: 0,
+            errors: 0,
+            startTime: Date.now()
+        };
 
         // Отправляем уведомление о старте парсинга списка
         if (telegramService.getStatus().enabled) {
-            await this.sendProgressNotification('start', currentPage, 0);
+            await sendProgressNotification('start', currentPage, 0, stats);
         }
 
-        while (attempt < this.config.maxRetries) {
+        while (attempt < parserConfig.maxRetries) {
             try {
                 console.log("🔍 Открываем каталог Sharrai...");
 
                 // Используем утилиту пагинации
                 for await (const { page: paginationPage, pageNumber, url, hasContent } of paginatePages(context, {
-                    baseUrl: this.config.listingsUrl,
-                    contentSelector: this.listingSelector,
+                    baseUrl: parserConfig.listingsUrl,
+                    contentSelector: listingSelector,
                     urlOptions: {
                         pageParam: 'page',
                         separator: '?'
@@ -68,7 +66,7 @@ class SharraiListingParser {
                         minItems: 1,
                         timeout: 30000
                     },
-                    maxPages: this.maxPages,
+                    maxPages: maxPages,
                     maxEmptyPages: 3,
                     onPageLoad: async (page, pageNum, pageUrl) => {
                         currentPage = pageNum;
@@ -89,11 +87,11 @@ class SharraiListingParser {
                     
                     try {
                         // Ждем появления контейнера с объявлениями
-                        await paginationPage.waitForSelector(this.listingSelector, { timeout: 30000 });
+                        await paginationPage.waitForSelector(listingSelector, { timeout: 30000 });
                         
                         // Извлекаем ссылки на объявления
                         carLinks = await paginationPage.$$eval(
-                            this.listingSelector,
+                            listingSelector,
                             (elements) => {
                                 const links = [];
                                 const uniqueLinks = new Set();
@@ -134,8 +132,8 @@ class SharraiListingParser {
                     console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
                     
                     // Обновляем статистику
-                    this.stats.totalPages = currentPage;
-                    this.stats.totalListings += carLinks.length;
+                    stats.totalPages = currentPage;
+                    stats.totalListings += carLinks.length;
                     
                     // Логируем первые несколько ссылок для отладки
                     if (carLinks.length > 0 && currentPage <= 3) {
@@ -146,8 +144,8 @@ class SharraiListingParser {
                     }
 
                     // Отправляем уведомление в Telegram каждые N страниц
-                    if (telegramService.getStatus().enabled && currentPage % this.telegramNotificationInterval === 0) {
-                        await this.sendProgressNotification('progress', currentPage, this.stats.totalListings);
+                    if (telegramService.getStatus().enabled && currentPage % telegramNotificationInterval === 0) {
+                        await sendProgressNotification('progress', currentPage, stats.totalListings, stats);
                     }
 
                     // Возвращаем ссылки
@@ -162,27 +160,27 @@ class SharraiListingParser {
                 console.log(`✅ Завершаем парсинг Sharrai: обработано ${currentPage} страниц`);
                 
                 if (telegramService.getStatus().enabled) {
-                    await this.sendProgressNotification('end', currentPage, this.stats.totalListings);
+                    await sendProgressNotification('end', currentPage, stats.totalListings, stats);
                 }
                 
                 break; // Успешно завершили парсинг
 
             } catch (error) {
                 console.error(`❌ Критическая ошибка при парсинге страницы ${currentPage}:`, error);
-                this.stats.errors++;
+                stats.errors++;
                 attempt++;
                 
                 // Отправляем уведомление о критической ошибке
                 if (telegramService.getStatus().enabled) {
-                    await this.sendErrorNotification(currentPage, error, 'unknown', true);
+                    await sendErrorNotification(currentPage, error, 'unknown', true, stats);
                 }
                 
-                if (attempt >= (this.config.maxRetries || 3)) {
+                if (attempt >= (parserConfig.maxRetries || 3)) {
                     throw error;
                 }
                 
-                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries || 3}...`);
-                await this.sleep(this.config.retryDelay || 1000);
+                console.log(`🔄 Повторная попытка ${attempt}/${parserConfig.maxRetries || 3}...`);
+                await sleep(parserConfig.retryDelay || 1000);
             }
         }
     }
@@ -190,7 +188,7 @@ class SharraiListingParser {
     /**
      * Отправка уведомления о прогрессе в Telegram
      */
-    async sendProgressNotification(type, page, listingsCount) {
+    async function sendProgressNotification(type, page, listingsCount, stats) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -206,7 +204,7 @@ class SharraiListingParser {
                          `Объявлений найдено: ${listingsCount}\n` +
                          `Время: ${new Date().toLocaleString('ru-RU')}`;
             } else if (type === 'end') {
-                const elapsed = Math.round((Date.now() - this.stats.startTime) / 1000);
+                const elapsed = stats && stats.startTime ? Math.round((Date.now() - stats.startTime) / 1000) : 0;
                 message = `✅ *Sharrai: Парсинг завершен*\n\n` +
                          `Страниц обработано: ${page}\n` +
                          `Объявлений найдено: ${listingsCount}\n` +
@@ -225,7 +223,7 @@ class SharraiListingParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(page, error, url = 'unknown', isCritical = false) {
+    async function sendErrorNotification(page, error, url = 'unknown', isCritical = false, stats = null) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -244,10 +242,18 @@ class SharraiListingParser {
     /**
      * Утилита для паузы
      */
-    sleep(ms) {
+    function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+
+    // Возвращаем объект с методами
+    return {
+        getListings,
+        sendProgressNotification,
+        sendErrorNotification,
+        sleep
+    };
 }
 
-module.exports = { SharraiListingParser };
+module.exports = { createSharraiListingParser };
 

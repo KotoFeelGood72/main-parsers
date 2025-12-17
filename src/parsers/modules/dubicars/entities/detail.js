@@ -2,63 +2,65 @@ const { telegramService } = require('../../../../services/TelegramService');
 const { createOptimizedPage, safeEval } = require('../../../../parsers/utils/parserHelpers');
 
 /**
- * Парсинг детальной информации для Dubicars.com
+ * Парсинг детальной информации для Dubicars.com (функциональный подход)
  */
 
-class DubicarsDetailParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Счетчик ошибок для логирования
-        this.errorCount = 0;
-        
-        // Селекторы для детальной страницы
-        this.selectors = {
-            // Селекторы для основных данных
-            title: 'h1.text-dark',
-            price: 'div.price.fs-20.fw-600.text-dark.currency-price-field',
-            // Селекторы для спецификаций
-            specifications: '#item-specifications ul.faq__data li',
-            // Селекторы для highlights
-            mobileHighlights: '#highlights .mobile-only li',
-            laptopHighlights: '#highlights .laptop-only li',
-            // Селекторы для фотографий
-            photos: '#car-images-slider img',
-            altPhotos: 'img[alt*="Rolls-Royce"], img[alt*="Cullinan"], .car-image img, .image-container img',
-            // Селекторы для продавца
-            sellerName: '.seller-intro p',
-            sellerLogo: '.seller-intro img',
-            sellerProfileLink: '.seller-intro a',
-            // Селекторы для контактов
-            whatsappLink: 'a.whatsapp-link'
-        };
-        
-        // Поля для извлечения данных из спецификаций
-        this.specificationFields = {
-            make: ['make'],
-            model: ['model'],
-            year: ['year', 'model year'],
-            kilometers: ['kilometers', 'mileage'],
-            exterior_color: ['color'],
-            interior_color: ['interior color'],
-            transmission: ['transmission'],
-            body_type: ['vehicle type'],
-            drive_type: ['drive type'],
-            seating_capacity: ['seating capacity'],
-            doors: ['number of doors'],
-            wheel_size: ['wheel size'],
-            fuel_type: ['fuel type'],
-            horsepower: ['horsepower', 'power'],
-            engine_capacity: ['engine capacity'],
-            cylinders: ['cylinders']
-        };
-    }
+/**
+ * Создание парсера детальной информации Dubicars
+ */
+function createDubicarsDetailParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Счетчик ошибок для логирования
+    let errorCount = 0;
+    
+    // Селекторы для детальной страницы
+    const selectors = {
+        // Селекторы для основных данных
+        title: 'h1.text-dark',
+        price: 'div.price.fs-20.fw-600.text-dark.currency-price-field',
+        // Селекторы для спецификаций
+        specifications: '#item-specifications ul.faq__data li',
+        // Селекторы для highlights
+        mobileHighlights: '#highlights .mobile-only li',
+        laptopHighlights: '#highlights .laptop-only li',
+        // Селекторы для фотографий
+        photos: '#car-images-slider img',
+        altPhotos: 'img[alt*="Rolls-Royce"], img[alt*="Cullinan"], .car-image img, .image-container img',
+        // Селекторы для продавца
+        sellerName: '.seller-intro p',
+        sellerLogo: '.seller-intro img',
+        sellerProfileLink: '.seller-intro a',
+        // Селекторы для контактов
+        whatsappLink: 'a.whatsapp-link'
+    };
+    
+    // Поля для извлечения данных из спецификаций
+    const specificationFields = {
+        make: ['make'],
+        model: ['model'],
+        year: ['year', 'model year'],
+        kilometers: ['kilometers', 'mileage'],
+        exterior_color: ['color'],
+        interior_color: ['interior color'],
+        transmission: ['transmission'],
+        body_type: ['vehicle type'],
+        drive_type: ['drive type'],
+        seating_capacity: ['seating capacity'],
+        doors: ['number of doors'],
+        wheel_size: ['wheel size'],
+        fuel_type: ['fuel type'],
+        horsepower: ['horsepower', 'power'],
+        engine_capacity: ['engine capacity'],
+        cylinders: ['cylinders']
+    };
 
     /**
      * Парсинг детальной страницы автомобиля
      */
-    async parseCarDetails(url, context) {
-        const page = await createOptimizedPage(context, this.config);
+    async function parseCarDetails(url, context) {
+        const page = await createOptimizedPage(context, parserConfig);
 
         try {
             console.log(`🚗 Переходим к ${url}`);
@@ -75,13 +77,13 @@ class DubicarsDetailParser {
             console.log("📄 Парсим данные...");
 
             // Парсинг основных данных
-            const title = await safeEval(page, this.selectors.title, el => el.textContent.trim());
+            const title = await safeEval(page, selectors.title, el => el.textContent.trim());
 
             // Извлекаем год из заголовка, если он там есть
             const yearFromTitle = title ? title.match(/\b(202[0-9]|203[0-9])\b/) : null;
 
             // Парсинг цены
-            const priceFormatted = await safeEval(page, this.selectors.price, el => el.textContent.trim());
+            const priceFormatted = await safeEval(page, selectors.price, el => el.textContent.trim());
 
             // Извлекаем валюту и сумму из строки типа "USD 734,200"
             let priceRaw = null;
@@ -156,7 +158,7 @@ class DubicarsDetailParser {
 
                 return specs;
             }, {
-                specSelector: this.selectors.specifications
+                specSelector: selectors.specifications
             });
 
             // Всегда пробуем парсить из highlights секции для дополнительных данных
@@ -275,8 +277,8 @@ class DubicarsDetailParser {
                 
                 return highlights;
             }, {
-                mobileSelector: this.selectors.mobileHighlights,
-                laptopSelector: this.selectors.laptopHighlights
+                mobileSelector: selectors.mobileHighlights,
+                laptopSelector: selectors.laptopHighlights
             });
             
             console.log("📊 Найденные данные в highlights:", highlights);
@@ -364,20 +366,20 @@ class DubicarsDetailParser {
                 
                 return images;
             }, {
-                photoSelector: this.selectors.photos,
-                altPhotoSelector: this.selectors.altPhotos
+                photoSelector: selectors.photos,
+                altPhotoSelector: selectors.altPhotos
             });
 
             // Извлекаем главное изображение (первая фотография)
             const main_image = photos.length > 0 ? photos[0] : null;
 
             // Парсинг информации о продавце
-            const sellerName = await safeEval(page, this.selectors.sellerName, el => el.textContent.trim());
-            const sellerLogo = await safeEval(page, this.selectors.sellerLogo, img => img.src.startsWith('//') ? 'https:' + img.src : img.src);
-            const sellerProfileLink = await safeEval(page, this.selectors.sellerProfileLink, a => a.href);
+            const sellerName = await safeEval(page, selectors.sellerName, el => el.textContent.trim());
+            const sellerLogo = await safeEval(page, selectors.sellerLogo, img => img.src.startsWith('//') ? 'https:' + img.src : img.src);
+            const sellerProfileLink = await safeEval(page, selectors.sellerProfileLink, a => a.href);
 
             // Парсинг телефона
-            const whatsappHref = await safeEval(page, this.selectors.whatsappLink, a => a.href);
+            const whatsappHref = await safeEval(page, selectors.whatsappLink, a => a.href);
             const phoneMatch = whatsappHref ? whatsappHref.match(/phone=(\d+)/) : null;
             const phone = phoneMatch ? `+${phoneMatch[1]}` : "Не указан";
 
@@ -467,12 +469,12 @@ class DubicarsDetailParser {
             return carDetails;
 
         } catch (error) {
-            this.errorCount++;
+            errorCount++;
             console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
             
             // Отправляем уведомление в Telegram при критических ошибках
-            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
-                await this.sendErrorNotification(url, error);
+            if (telegramService.getStatus().enabled && errorCount % 10 === 0) {
+                await sendErrorNotification(url, error);
             }
             
             return null;
@@ -484,7 +486,7 @@ class DubicarsDetailParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(url, error) {
+    async function sendErrorNotification(url, error) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -492,7 +494,7 @@ class DubicarsDetailParser {
                           `URL: ${url}\n` +
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
-                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Всего ошибок: ${errorCount}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -500,6 +502,12 @@ class DubicarsDetailParser {
             console.warn(`⚠️ Ошибка отправки уведомления:`, telegramError.message);
         }
     }
+
+    // Возвращаем объект с методами
+    return {
+        parseCarDetails,
+        sendErrorNotification
+    };
 }
 
-module.exports = { DubicarsDetailParser };
+module.exports = { createDubicarsDetailParser };

@@ -2,69 +2,71 @@ const { telegramService } = require('../../../../services/TelegramService');
 const { paginatePages } = require('../../../utils/pagination');
 
 /**
- * Парсинг списка объявлений для Autotraders.com
+ * Парсинг списка объявлений для Autotraders.com (функциональный подход)
  */
 
-class AutotradersListingParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Основные селекторы для Autotraders.ae
-        this.listingSelector = '.row.cars-cont';
-        this.listingStemSelector = '.row.cars-cont a';
-        
-        // Селекторы для скролла
-        this.scrollContainers = [
-            'main',
-            '.container',
-            "body"
-        ];
-        
-        // Дополнительные селекторы
-        this.selectors = {
-            listings: '.row.cars-cont',
-            pagination: '.pagination, .pager, .page-navigation'
-        };
-        
-        // Статистика для логирования
-        this.stats = {
-            totalPages: 0,
-            totalListings: 0,
-            errors: 0,
-            startTime: null
-        };
+/**
+ * Создание парсера списка объявлений Autotraders
+ */
+function createAutotradersListingParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Основные селекторы для Autotraders.ae
+    const listingSelector = '.row.cars-cont';
+    const listingStemSelector = '.row.cars-cont a';
+    
+    // Селекторы для скролла
+    const scrollContainers = [
+        'main',
+        '.container',
+        "body"
+    ];
+    
+    // Дополнительные селекторы
+    const selectors = {
+        listings: '.row.cars-cont',
+        pagination: '.pagination, .pager, .page-navigation'
+    };
+    
+    // Статистика для логирования
+    const stats = {
+        totalPages: 0,
+        totalListings: 0,
+        errors: 0,
+        startTime: null
+    };
 
-        // Максимальное количество страниц (защита от бесконечного цикла)
-        this.maxPages = config.maxPages || 1000;
-        
-        // Интервал для отправки уведомлений в Telegram (каждые N страниц)
-        this.telegramNotificationInterval = config.telegramNotificationInterval || 10;
-    }
+    // Максимальное количество страниц (защита от бесконечного цикла)
+    const maxPages = config.maxPages || 1000;
+    
+    // Интервал для отправки уведомлений в Telegram (каждые N страниц)
+    const telegramNotificationInterval = config.telegramNotificationInterval || 10;
 
     /**
      * Получение списка объявлений
      */
-    async* getListings(context) {
+    async function* getListings(context) {
         let attempt = 0;
         let currentPage = 1;
-        this.stats.startTime = Date.now();
-        this.stats.totalPages = 0;
-        this.stats.totalListings = 0;
-        this.stats.errors = 0;
+        stats.startTime = Date.now();
+        stats.totalPages = 0;
+        stats.totalListings = 0;
+        stats.errors = 0;
 
         // Отправляем уведомление о старте парсинга списка
         if (telegramService.getStatus().enabled) {
-            await this.sendProgressNotification('start', currentPage, 0);
+            await sendProgressNotification('start', currentPage, 0);
         }
 
-        while (attempt < (this.config.maxRetries || 3)) {
+        while (attempt < (parserConfig.maxRetries || 3)) {
             try {
                 console.log("🔍 Открываем каталог Autotraders...");
 
                 // Используем утилиту пагинации
                 for await (const { page: paginationPage, pageNumber, url, hasContent } of paginatePages(context, {
-                    baseUrl: this.config.listingsUrl,
-                    contentSelector: this.selectors.listings,
+                    baseUrl: parserConfig.listingsUrl,
+                    contentSelector: selectors.listings,
                     urlOptions: {
                         pageParam: 'page',
                         separator: '?',
@@ -74,7 +76,7 @@ class AutotradersListingParser {
                         minItems: 1,
                         timeout: 5000
                     },
-                    maxPages: this.maxPages,
+                    maxPages: maxPages,
                     maxEmptyPages: 3,
                     onPageLoad: async (page, pageNum, pageUrl) => {
                         currentPage = pageNum;
@@ -103,7 +105,7 @@ class AutotradersListingParser {
 
                         // Скроллим страницу для подгрузки всех карточек
                         try {
-                            await this.autoScroll(paginationPage);
+                            await autoScroll(paginationPage);
                             await paginationPage.waitForTimeout(2000);
                         } catch (scrollError) {
                             console.warn(`⚠️ Ошибка при скролле страницы ${currentPage}:`, scrollError.message);
@@ -136,24 +138,24 @@ class AutotradersListingParser {
                                     console.error('Ошибка в evaluate:', e);
                                     return [];
                                 }
-                            }, this.selectors);
+                            }, selectors);
                             
                             if (carLinks.length > 0) {
                                 console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
                             }
                         } catch (error) {
                             console.error(`⚠️ Ошибка при поиске объявлений на странице ${currentPage}:`, error.message);
-                            this.stats.errors++;
+                            stats.errors++;
                             
                             // Отправляем уведомление об ошибке в Telegram
                             if (telegramService.getStatus().enabled) {
-                                await this.sendErrorNotification(currentPage, error, currentPageUrl);
+                                await sendErrorNotification(currentPage, error, currentPageUrl);
                             }
                         }
 
                         // Обновляем статистику
-                        this.stats.totalPages = currentPage;
-                        this.stats.totalListings += carLinks.length;
+                        stats.totalPages = currentPage;
+                        stats.totalListings += carLinks.length;
 
                         // Логируем первые несколько ссылок для отладки
                         if (carLinks.length > 0 && currentPage <= 3) {
@@ -164,8 +166,8 @@ class AutotradersListingParser {
                         }
 
                         // Отправляем уведомление в Telegram каждые N страниц
-                        if (telegramService.getStatus().enabled && currentPage % this.telegramNotificationInterval === 0) {
-                            await this.sendProgressNotification('progress', currentPage, this.stats.totalListings);
+                        if (telegramService.getStatus().enabled && currentPage % telegramNotificationInterval === 0) {
+                            await sendProgressNotification('progress', currentPage, stats.totalListings);
                         }
 
                         // Возвращаем ссылки
@@ -177,15 +179,15 @@ class AutotradersListingParser {
 
                         // Пагинация обрабатывается автоматически утилитой
                         // Небольшая задержка между страницами
-                        await this.sleep(this.config.delayBetweenRequests || 1000);
+                        await sleep(parserConfig.delayBetweenRequests || 1000);
 
                     } catch (pageError) {
                         console.error(`❌ Ошибка при обработке страницы ${currentPage}:`, pageError.message);
-                        this.stats.errors++;
+                        stats.errors++;
                         
                         // Отправляем уведомление об ошибке в Telegram
                         if (telegramService.getStatus().enabled) {
-                            await this.sendErrorNotification(currentPage, pageError, currentPageUrl);
+                            await sendErrorNotification(currentPage, pageError, currentPageUrl);
                         }
 
                         // Продолжаем к следующей странице (пагинация обрабатывается автоматически)
@@ -197,27 +199,27 @@ class AutotradersListingParser {
                 console.log(`✅ Завершаем парсинг Autotraders: обработано ${currentPage} страниц`);
                 
                 if (telegramService.getStatus().enabled) {
-                    await this.sendProgressNotification('end', currentPage, this.stats.totalListings);
+                    await sendProgressNotification('end', currentPage, stats.totalListings);
                 }
                 
                 break; // Успешно завершили парсинг
 
             } catch (error) {
                 console.error(`❌ Критическая ошибка при парсинге страницы ${currentPage}:`, error);
-                this.stats.errors++;
+                stats.errors++;
                 attempt++;
                 
                 // Отправляем уведомление о критической ошибке
                 if (telegramService.getStatus().enabled) {
-                    await this.sendErrorNotification(currentPage, error, 'unknown', true);
+                    await sendErrorNotification(currentPage, error, 'unknown', true);
                 }
                 
-                if (attempt >= (this.config.maxRetries || 3)) {
+                if (attempt >= (parserConfig.maxRetries || 3)) {
                     throw error;
                 }
                 
-                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries || 3}...`);
-                await this.sleep(this.config.retryDelay || 1000);
+                console.log(`🔄 Повторная попытка ${attempt}/${parserConfig.maxRetries || 3}...`);
+                await sleep(parserConfig.retryDelay || 1000);
             } finally {
                 // Страницы закрываются автоматически утилитой пагинации
             }
@@ -228,7 +230,7 @@ class AutotradersListingParser {
      * Надежная проверка наличия следующей страницы
      * Пробует загрузить следующую страницу и проверить наличие объявлений
      */
-    async checkNextPageReliable(context, page, currentPage, currentListingsCount) {
+    async function checkNextPageReliable(context, page, currentPage, currentListingsCount) {
         try {
             // Сначала проверяем пагинацию на текущей странице
             const hasPaginationNext = await page.evaluate((pageNum) => {
@@ -304,8 +306,8 @@ class AutotradersListingParser {
             // Если на текущей странице есть объявления, пробуем загрузить следующую страницу
             if (currentListingsCount > 0) {
                 const nextPageUrl = currentPage === 1 
-                    ? `${this.config.listingsUrl}?page=2&limit=20`
-                    : `${this.config.listingsUrl}?page=${currentPage + 1}&limit=20`;
+                    ? `${parserConfig.listingsUrl}?page=2&limit=20`
+                    : `${parserConfig.listingsUrl}?page=${currentPage + 1}&limit=20`;
                 
                 console.log(`🔍 Проверяем наличие следующей страницы: ${nextPageUrl}`);
                 
@@ -322,14 +324,14 @@ class AutotradersListingParser {
                         await testPage.waitForTimeout(2000);
                         
                         // Проверяем наличие объявлений на следующей странице
-                        const hasListings = await testPage.evaluate(() => {
+                        const hasListings = await testPage.evaluate((selectors) => {
                             try {
                                 const listings = document.querySelectorAll(selectors.listings);
                                 return listings.length > 0;
                             } catch (e) {
                                 return false;
                             }
-                        });
+                        }, selectors);
                         
                         await testPage.close();
                         
@@ -373,7 +375,7 @@ class AutotradersListingParser {
     /**
      * Старая проверка наличия следующей страницы (для обратной совместимости)
      */
-    async checkNextPage(page, currentPage) {
+    async function checkNextPage(page, currentPage) {
         // Для обратной совместимости используем упрощенную проверку
         try {
             const hasNext = await page.evaluate((currentPageNum, selectors) => {
@@ -390,7 +392,7 @@ class AutotradersListingParser {
                 } catch (e) {
                     return false;
                 }
-            }, currentPage);
+            }, currentPage, selectors);
             return hasNext;
         } catch (error) {
             return true;
@@ -400,7 +402,7 @@ class AutotradersListingParser {
     /**
      * Автоматический скролл для подгрузки контента
      */
-    async autoScroll(page) {
+    async function autoScroll(page) {
         try {
             await page.evaluate(async (scrollContainers) => {
                 try {
@@ -445,7 +447,7 @@ class AutotradersListingParser {
                 } catch (e) {
                     console.error('Ошибка в autoScroll:', e);
                 }
-            }, this.scrollContainers);
+            }, scrollContainers);
         } catch (error) {
             console.warn(`⚠️ Ошибка при скролле:`, error.message);
         }
@@ -454,12 +456,12 @@ class AutotradersListingParser {
     /**
      * Отправка уведомления о прогрессе в Telegram
      */
-    async sendProgressNotification(type, page, listingsCount) {
+    async function sendProgressNotification(type, page, listingsCount) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
-            const duration = this.stats.startTime 
-                ? Math.round((Date.now() - this.stats.startTime) / 1000 / 60) 
+            const duration = stats.startTime 
+                ? Math.round((Date.now() - stats.startTime) / 1000 / 60) 
                 : 0;
 
             let message = '';
@@ -472,21 +474,21 @@ class AutotradersListingParser {
                 message = `📊 *Autotraders: Прогресс парсинга*\n\n` +
                          `Страниц обработано: ${page}\n` +
                          `Объявлений найдено: ${listingsCount}\n` +
-                         `Ошибок: ${this.stats.errors}\n` +
+                         `Ошибок: ${stats.errors}\n` +
                          `Время работы: ${duration} мин\n` +
                          `Время: ${new Date().toLocaleString('ru-RU')}`;
             } else if (type === 'end') {
                 message = `✅ *Autotraders: Парсинг завершен*\n\n` +
                          `Всего страниц: ${page}\n` +
                          `Всего объявлений: ${listingsCount}\n` +
-                         `Ошибок: ${this.stats.errors}\n` +
+                         `Ошибок: ${stats.errors}\n` +
                          `Время работы: ${duration} мин\n` +
                          `Время: ${new Date().toLocaleString('ru-RU')}`;
             } else if (type === 'limit_reached') {
                 message = `⚠️ *Autotraders: Достигнут лимит страниц*\n\n` +
                          `Обработано страниц: ${page}\n` +
                          `Найдено объявлений: ${listingsCount}\n` +
-                         `Ошибок: ${this.stats.errors}\n` +
+                         `Ошибок: ${stats.errors}\n` +
                          `Время работы: ${duration} мин\n` +
                          `Время: ${new Date().toLocaleString('ru-RU')}\n\n` +
                          `⚠️ Возможно, на сайте больше объявлений!`;
@@ -503,7 +505,7 @@ class AutotradersListingParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(page, error, url = 'unknown', isCritical = false) {
+    async function sendErrorNotification(page, error, url = 'unknown', isCritical = false) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -513,7 +515,7 @@ class AutotradersListingParser {
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
                           (url !== 'unknown' ? `URL: ${url}\n` : '') +
-                          `Всего ошибок: ${this.stats.errors}\n` +
+                          `Всего ошибок: ${stats.errors}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -525,9 +527,22 @@ class AutotradersListingParser {
     /**
      * Утилита для паузы
      */
-    sleep(ms) {
+    function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+
+    // Возвращаем объект с методами
+    return {
+        getListings,
+        checkNextPageReliable,
+        checkNextPage,
+        autoScroll,
+        sendProgressNotification,
+        sendErrorNotification,
+        sleep
+    };
 }
 
-module.exports = { AutotradersListingParser };
+module.exports = { 
+    createAutotradersListingParser
+};

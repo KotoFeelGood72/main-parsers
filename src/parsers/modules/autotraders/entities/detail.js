@@ -1,77 +1,79 @@
 const { telegramService } = require('../../../../services/TelegramService');
 
 /**
- * Парсинг детальной информации для Autotraders.com
+ * Парсинг детальной информации для Autotraders.com (функциональный подход)
  */
 
-class AutotradersDetailParser {
-    constructor(config) {
-        this.config = config;
+/**
+ * Создание парсера детальной информации Autotraders
+ */
+function createAutotradersDetailParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Счетчик ошибок для логирования
+    let errorCount = 0;
+    
+    // Селекторы для детальной страницы Autotraders.ae
+    const selectors = {
+        // Основные данные
+        title: 'h1, h2.title, .car-title',
+        titleH2: '.title h2',
+        price: '.price h3, .car-price',
+        priceContainer: '.price',
+        location: '.cincitymn, .location',
+        locationUserDetails: '.user-details .location .dcname',
+        locationCincitymn: '.cincitymn a',
         
-        // Счетчик ошибок для логирования
-        this.errorCount = 0;
+        // Детали автомобиля
+        carDetailsList: '.car-det-list',
+        carDetailsItem: '.car-det-list li',
+        carDetailsCol: '.detail-col',
+        carDetailsTxt: '.detail-col .txt',
+        make: '.cinml a',
+        makeFirst: '.cinml li:first-child a',
+        model: '.cinml li:nth-child(3) a',
+        modelLast: '.cinml li:last-child a',
+        year: '.yrkms .fa-calendar-alt',
+        yearFirst: '.yrkms li:first-child',
+        bodyType: '.car-specs .spec-body',
+        fuelType: '.car-specs .spec-fuel',
+        transmission: '.car-specs .spec-transmission',
+        mileage: '.yrkms .fa-tachometer-alt',
+        mileageLast: '.yrkms li:last-child',
+        color: '.car-specs .spec-color',
+        carDesc: '.car-desc p',
         
-        // Селекторы для детальной страницы Autotraders.ae
-        this.selectors = {
-            // Основные данные
-            title: 'h1, h2.title, .car-title',
-            titleH2: '.title h2',
-            price: '.price h3, .car-price',
-            priceContainer: '.price',
-            location: '.cincitymn, .location',
-            locationUserDetails: '.user-details .location .dcname',
-            locationCincitymn: '.cincitymn a',
-            
-            // Детали автомобиля
-            carDetailsList: '.car-det-list',
-            carDetailsItem: '.car-det-list li',
-            carDetailsCol: '.detail-col',
-            carDetailsTxt: '.detail-col .txt',
-            make: '.cinml a',
-            makeFirst: '.cinml li:first-child a',
-            model: '.cinml li:nth-child(3) a',
-            modelLast: '.cinml li:last-child a',
-            year: '.yrkms .fa-calendar-alt',
-            yearFirst: '.yrkms li:first-child',
-            bodyType: '.car-specs .spec-body',
-            fuelType: '.car-specs .spec-fuel',
-            transmission: '.car-specs .spec-transmission',
-            mileage: '.yrkms .fa-tachometer-alt',
-            mileageLast: '.yrkms li:last-child',
-            color: '.car-specs .spec-color',
-            carDesc: '.car-desc p',
-            
-            // Продавец
-            sellerName: '.user-name h4 a, .seller-name',
-            sellerNameUserDetails: '.user-details .name .dpname',
-            sellerType: '.user-name, .seller-type',
-            sellerLogo: '.image-user img, .seller-logo img',
-            sellerLogoUserDetails: '.user-details .logo img',
-            phone: '.phone-number, .contact-phone',
-            phoneShowNumber: '.show_number',
-            
-            // Изображения
-            images: '.car-gallery img, .gallery img',
-            mainImage: '.car-main-image img, .image img.img-fluid',
-            galleryImages: '.image-gallery.lightgallery a.lightgallery.item',
-            thumbnailImages: '.thumbnail img'
-        };
+        // Продавец
+        sellerName: '.user-name h4 a, .seller-name',
+        sellerNameUserDetails: '.user-details .name .dpname',
+        sellerType: '.user-name, .seller-type',
+        sellerLogo: '.image-user img, .seller-logo img',
+        sellerLogoUserDetails: '.user-details .logo img',
+        phone: '.phone-number, .contact-phone',
+        phoneShowNumber: '.show_number',
         
-        // Поля для извлечения данных
-        this.dataFields = {
-            make: ['Make', 'Марка', 'Brand', 'brand'],
-            model: ['Model', 'Модель', 'Car Model', 'car model'],
-            bodyType: ['Body type', 'Body Type', 'Тип кузова', 'body type', 'Body', 'body'],
-            fuelType: ['Fuel Type', 'Тип топлива', 'Fuel', 'fuel', 'Fuel type', 'fuel type'],
-            transmission: ['Transmission', 'Коробка передач', 'Gear', 'gear'],
-            color: ['Color', 'Цвет', 'Exterior Color', 'exterior color']
-        };
-    }
+        // Изображения
+        images: '.car-gallery img, .gallery img',
+        mainImage: '.car-main-image img, .image img.img-fluid',
+        galleryImages: '.image-gallery.lightgallery a.lightgallery.item',
+        thumbnailImages: '.thumbnail img'
+    };
+    
+    // Поля для извлечения данных
+    const dataFields = {
+        make: ['Make', 'Марка', 'Brand', 'brand'],
+        model: ['Model', 'Модель', 'Car Model', 'car model'],
+        bodyType: ['Body type', 'Body Type', 'Тип кузова', 'body type', 'Body', 'body'],
+        fuelType: ['Fuel Type', 'Тип топлива', 'Fuel', 'fuel', 'Fuel type', 'fuel type'],
+        transmission: ['Transmission', 'Коробка передач', 'Gear', 'gear'],
+        color: ['Color', 'Цвет', 'Exterior Color', 'exterior color']
+    };
 
     /**
      * Парсинг детальной страницы автомобиля
      */
-    async parseCarDetails(url, context) {
+    async function parseCarDetails(url, context) {
         if (!url || !context) {
             console.error('❌ Некорректные параметры для parseCarDetails');
             return null;
@@ -109,14 +111,14 @@ class AutotradersDetailParser {
             let kilometers, exteriorColor, sellerName, sellerType, sellerLogo, phoneNumber, photos;
 
             try {
-                title = await this.extractTitle(page) || "Не указано";
+                title = await extractTitle(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения title:`, error.message);
                 title = "Не указано";
             }
 
             try {
-                priceData = await this.extractPrice(page);
+                priceData = await extractPrice(page);
                 if (!priceData || !priceData.formatted) {
                     priceData = { raw: 0, formatted: "Не указано" };
                 }
@@ -126,98 +128,98 @@ class AutotradersDetailParser {
             }
 
             try {
-                location = await this.extractLocation(page) || "Не указано";
+                location = await extractLocation(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения location:`, error.message);
                 location = "Не указано";
             }
 
             try {
-                make = await this.extractMake(page) || "Не указано";
+                make = await extractMake(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения make:`, error.message);
                 make = "Не указано";
             }
 
             try {
-                model = await this.extractModel(page) || "Не указано";
+                model = await extractModel(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения model:`, error.message);
                 model = "Не указано";
             }
 
             try {
-                year = await this.extractYear(page) || "Не указано";
+                year = await extractYear(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения year:`, error.message);
                 year = "Не указано";
             }
 
             try {
-                bodyType = await this.extractBodyType(page) || "Не указано";
+                bodyType = await extractBodyType(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения bodyType:`, error.message);
                 bodyType = "Не указано";
             }
 
             try {
-                fuelType = await this.extractFuelType(page) || "Не указано";
+                fuelType = await extractFuelType(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения fuelType:`, error.message);
                 fuelType = "Не указано";
             }
 
             try {
-                transmission = await this.extractTransmission(page) || "Не указано";
+                transmission = await extractTransmission(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения transmission:`, error.message);
                 transmission = "Не указано";
             }
 
             try {
-                kilometers = await this.extractKilometers(page) || "0";
+                kilometers = await extractKilometers(page) || "0";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения kilometers:`, error.message);
                 kilometers = "0";
             }
 
             try {
-                exteriorColor = await this.extractColor(page) || "Не указано";
+                exteriorColor = await extractColor(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения color:`, error.message);
                 exteriorColor = "Не указано";
             }
 
             try {
-                sellerName = await this.extractSellerName(page) || "Не указано";
+                sellerName = await extractSellerName(page) || "Не указано";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения sellerName:`, error.message);
                 sellerName = "Не указано";
             }
 
             try {
-                sellerType = await this.extractSellerType(page) || "Частное лицо";
+                sellerType = await extractSellerType(page) || "Частное лицо";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения sellerType:`, error.message);
                 sellerType = "Частное лицо";
             }
 
             try {
-                sellerLogo = await this.extractSellerLogo(page) || null;
+                sellerLogo = await extractSellerLogo(page) || null;
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения sellerLogo:`, error.message);
                 sellerLogo = null;
             }
 
             try {
-                phoneNumber = await this.extractPhone(page) || "Не указан";
+                phoneNumber = await extractPhone(page) || "Не указан";
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения phone:`, error.message);
                 phoneNumber = "Не указан";
             }
 
             try {
-                photos = await this.extractPhotos(page) || [];
+                photos = await extractPhotos(page) || [];
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения photos:`, error.message);
                 photos = [];
@@ -255,12 +257,12 @@ class AutotradersDetailParser {
             return carDetails;
 
         } catch (error) {
-            this.errorCount++;
+            errorCount++;
             console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
             
             // Отправляем уведомление в Telegram при критических ошибках
-            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
-                await this.sendErrorNotification(url, error);
+            if (telegramService.getStatus().enabled && errorCount % 10 === 0) {
+                await sendErrorNotification(url, error);
             }
             
             return null;
@@ -276,7 +278,7 @@ class AutotradersDetailParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(url, error) {
+    async function sendErrorNotification(url, error) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -284,7 +286,7 @@ class AutotradersDetailParser {
                           `URL: ${url}\n` +
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
-                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Всего ошибок: ${errorCount}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -296,7 +298,7 @@ class AutotradersDetailParser {
     /**
      * Безопасное выполнение eval на странице
      */
-    async safeEval(page, selector, fn) {
+    async function safeEval(page, selector, fn) {
         try {
             if (!page || !selector || !fn) {
                 return null;
@@ -311,7 +313,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение заголовка
      */
-    async extractTitle(page) {
+    async function extractTitle(page) {
         if (!page) return "Не указано";
         
         try {
@@ -322,7 +324,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            }, this.selectors);
+            }, selectors);
             return title || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения title:`, error.message);
@@ -333,7 +335,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение цены
      */
-    async extractPrice(page) {
+    async function extractPrice(page) {
         if (!page) return { raw: 0, formatted: "Не указано" };
         
         try {
@@ -361,7 +363,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            }, this.selectors);
+            }, selectors);
             return priceData || { raw: 0, formatted: "Не указано" };
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения price:`, error.message);
@@ -372,7 +374,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение марки
      */
-    async extractMake(page) {
+    async function extractMake(page) {
         if (!page) return "Не указано";
         
         try {
@@ -393,7 +395,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            });
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения make:`, error.message);
@@ -404,7 +406,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение модели
      */
-    async extractModel(page) {
+    async function extractModel(page) {
         if (!page) return "Не указано";
         
         try {
@@ -437,7 +439,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            });
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения model:`, error.message);
@@ -448,7 +450,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение года
      */
-    async extractYear(page) {
+    async function extractYear(page) {
         if (!page) return "Не указано";
         
         try {
@@ -483,7 +485,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            }, this.selectors);
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения year:`, error.message);
@@ -494,7 +496,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение пробега
      */
-    async extractKilometers(page) {
+    async function extractKilometers(page) {
         if (!page) return '0';
         
         try {
@@ -529,7 +531,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            });
+            }, selectors);
             return result || '0';
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения kilometers:`, error.message);
@@ -540,11 +542,11 @@ class AutotradersDetailParser {
     /**
      * Извлечение местоположения
      */
-    async extractLocation(page) {
+    async function extractLocation(page) {
         if (!page) return "Не указано";
         
         try {
-            const result = await page.evaluate(() => {
+            const result = await page.evaluate((selectors) => {
                 try {
                     // Ищем location в user-details
                     const locationEl = document.querySelector(selectors.locationUserDetails);
@@ -561,7 +563,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            }, this.selectors);
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения location:`, error.message);
@@ -572,7 +574,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение имени продавца
      */
-    async extractSellerName(page) {
+    async function extractSellerName(page) {
         if (!page) return "Не указано";
         
         try {
@@ -592,7 +594,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            }, this.selectors);
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения sellerName:`, error.message);
@@ -603,7 +605,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение типа продавца
      */
-    async extractSellerType(page) {
+    async function extractSellerType(page) {
         if (!page) return "Частное лицо";
         
         try {
@@ -625,7 +627,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return 'Private';
                 }
-            });
+            }, selectors);
             return result || "Частное лицо";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения sellerType:`, error.message);
@@ -636,11 +638,11 @@ class AutotradersDetailParser {
     /**
      * Извлечение логотипа продавца
      */
-    async extractSellerLogo(page) {
+    async function extractSellerLogo(page) {
         if (!page) return null;
         
         try {
-            const result = await page.evaluate(() => {
+            const result = await page.evaluate((selectors) => {
                 try {
                     const logoEl = document.querySelector(selectors.sellerLogoUserDetails);
                     if (logoEl && logoEl.src && logoEl.src.startsWith('http')) {
@@ -656,7 +658,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            });
+            }, selectors);
             return result || null;
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения sellerLogo:`, error.message);
@@ -667,11 +669,11 @@ class AutotradersDetailParser {
     /**
      * Извлечение телефона
      */
-    async extractPhone(page) {
+    async function extractPhone(page) {
         if (!page) return "Не указан";
         
         try {
-            const result = await page.evaluate(() => {
+            const result = await page.evaluate((selectors) => {
                 try {
                     // Некоторые объявления показывают телефон в WhatsApp сообщении
                     const descEl = document.querySelector(selectors.carDesc);
@@ -693,7 +695,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            });
+            }, selectors);
             return result || "Не указан";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения phone:`, error.message);
@@ -704,7 +706,7 @@ class AutotradersDetailParser {
     /**
      * Извлечение фото
      */
-    async extractPhotos(page) {
+    async function extractPhotos(page) {
         if (!page) return [];
         
         try {
@@ -743,7 +745,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return [];
                 }
-            });
+            }, selectors);
             return result || [];
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения photos:`, error.message);
@@ -754,11 +756,11 @@ class AutotradersDetailParser {
     /**
      * Вспомогательные методы для типов
      */
-    async extractBodyType(page) {
+    async function extractBodyType(page) {
         if (!page) return "Не указано";
         
         try {
-            const result = await page.evaluate(() => {
+            const result = await page.evaluate((selectors) => {
                 try {
                     const details = Array.from(document.querySelectorAll(selectors.carDetailsItem));
                     for (const detail of details) {
@@ -782,7 +784,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            }, this.selectors);
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения bodyType:`, error.message);
@@ -790,7 +792,7 @@ class AutotradersDetailParser {
         }
     }
 
-    async extractFuelType(page) {
+    async function extractFuelType(page) {
         if (!page) return "Не указано";
         
         try {
@@ -818,7 +820,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            });
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения fuelType:`, error.message);
@@ -826,16 +828,16 @@ class AutotradersDetailParser {
         }
     }
 
-    async extractTransmission(page) {
+    async function extractTransmission(page) {
         // Autotraders не показывает transmission на детальной странице
         return "Не указано";
     }
 
-    async extractColor(page) {
+    async function extractColor(page) {
         if (!page) return "Не указано";
         
         try {
-            const result = await page.evaluate(() => {
+            const result = await page.evaluate((selectors) => {
                 try {
                     const details = Array.from(document.querySelectorAll(selectors.carDetailsItem));
                     for (const detail of details) {
@@ -859,7 +861,7 @@ class AutotradersDetailParser {
                 } catch (e) {
                     return null;
                 }
-            }, this.selectors);
+            }, selectors);
             return result || "Не указано";
         } catch (error) {
             console.warn(`⚠️ Ошибка извлечения color:`, error.message);
@@ -870,12 +872,38 @@ class AutotradersDetailParser {
     /**
      * Выбор первого непустого значения из объекта
      */
-    pick(map, keys, def = null) {
+    function pick(map, keys, def = null) {
         for (const k of keys) {
             if (map[k] != null) return map[k];
         }
         return def;
     }
+
+    // Возвращаем объект с методами
+    return {
+        parseCarDetails,
+        sendErrorNotification,
+        safeEval,
+        extractTitle,
+        extractPrice,
+        extractMake,
+        extractModel,
+        extractYear,
+        extractKilometers,
+        extractLocation,
+        extractSellerName,
+        extractSellerType,
+        extractSellerLogo,
+        extractPhone,
+        extractPhotos,
+        extractBodyType,
+        extractFuelType,
+        extractTransmission,
+        extractColor,
+        pick
+    };
 }
 
-module.exports = { AutotradersDetailParser };
+module.exports = { 
+    createAutotradersDetailParser
+};

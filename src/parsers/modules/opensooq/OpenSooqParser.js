@@ -1,6 +1,6 @@
 const { createBaseParser } = require('../../BaseParser');
-const { OpenSooqListingParser } = require('./entities/listing');
-const { OpenSooqDetailParser } = require('./entities/detail');
+const { createOpenSooqListingParser } = require('./entities/listing');
+const { createOpenSooqDetailParser } = require('./entities/detail');
 const { saveData } = require('../../../utils/saveData');
 const { delay } = require('../../utils/parserHelpers');
 
@@ -20,8 +20,8 @@ function createOpenSooqParser(config) {
     };
 
     const baseParser = createBaseParser('OpenSooq', parserConfig);
-    const listingParser = new OpenSooqListingParser(parserConfig);
-    const detailParser = new OpenSooqDetailParser(parserConfig);
+    const listingParser = createOpenSooqListingParser(parserConfig);
+    const detailParser = createOpenSooqDetailParser(parserConfig);
 
     /**
      * Получение списка объявлений

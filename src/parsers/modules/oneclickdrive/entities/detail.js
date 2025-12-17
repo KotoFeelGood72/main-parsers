@@ -1,21 +1,23 @@
 const { telegramService } = require('../../../../services/TelegramService');
 
 /**
- * Парсинг деталей объявления для OneClickDrive.com
+ * Парсинг деталей объявления для OneClickDrive.com (функциональный подход)
  */
 
-class OneclickdriveDetailParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Счетчик ошибок для логирования
-        this.errorCount = 0;
-    }
+/**
+ * Создание парсера детальной информации OneClickDrive
+ */
+function createOneclickdriveDetailParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Счетчик ошибок для логирования
+    let errorCount = 0;
 
     /**
      * Вспомогательная функция для безопасного извлечения данных
      */
-    async safeEval(page, selector, callback) {
+    async function safeEval(page, selector, callback) {
         try {
             return await page.$eval(selector, callback);
         } catch (error) {
@@ -26,7 +28,7 @@ class OneclickdriveDetailParser {
     /**
      * Парсинг детальной информации об объявлении
      */
-    async parseCarDetails(url, context) {
+    async function parseCarDetails(url, context) {
         const page = await context.newPage();
         
         try {
@@ -34,13 +36,13 @@ class OneclickdriveDetailParser {
 
             await page.goto(url, {
                 waitUntil: "domcontentloaded",
-                timeout: this.config.timeout,
+                timeout: parserConfig.timeout,
             });
 
             console.log("📄 Загружаем данные...");
 
             // Извлечение основных данных
-            const title = await this.safeEval(page, "h1.dsktit", el => el.textContent.trim());
+            const title = await safeEval(page, "h1.dsktit", el => el.textContent.trim());
             
             // Извлекаем данные из таблицы характеристик
             const specsData = await page.$$eval('.priceingdt', elements => {
@@ -77,10 +79,10 @@ class OneclickdriveDetailParser {
             const kilometers = specsData.driven || "0";
 
             const exteriorColor = specsData.exteriorColor || "Неизвестно";
-            const location = await this.safeEval(page, ".dtlloc", el => el.textContent.replace(/\s+/g, " ").trim());
+            const location = await safeEval(page, ".dtlloc", el => el.textContent.replace(/\s+/g, " ").trim());
 
             // Обработка цены
-            const priceFormatted = await this.safeEval(page, ".mainprice", el => el.textContent.replace(/[^\d,]/g, "").trim());
+            const priceFormatted = await safeEval(page, ".mainprice", el => el.textContent.replace(/[^\d,]/g, "").trim());
             const priceRaw = priceFormatted ? parseFloat(priceFormatted.replace(/,/g, "")) : null;
             const currency = "AED";
 
@@ -93,13 +95,13 @@ class OneclickdriveDetailParser {
             const mainImage = photos && photos.length > 0 ? photos[0] : null;
 
             // Информация о продавце
-            const sellerName = await this.safeEval(page, ".cmpbrndlogo", img => img.getAttribute("title"));
+            const sellerName = await safeEval(page, ".cmpbrndlogo", img => img.getAttribute("title"));
             const sellerType = specsData.sellerType || "Неизвестно";
-            const sellerLogo = await this.safeEval(page, ".cmpbrndlogo", el => el.src);
-            const sellerProfileLink = await this.safeEval(page, ".moredealer", el => el.href);
+            const sellerLogo = await safeEval(page, ".cmpbrndlogo", el => el.src);
+            const sellerProfileLink = await safeEval(page, ".moredealer", el => el.href);
 
             // Контактная информация
-            const phoneNumber = await this.safeEval(page, ".callnwbtn", el => el.textContent.trim());
+            const phoneNumber = await safeEval(page, ".callnwbtn", el => el.textContent.trim());
 
             // Формирование объекта с данными
             const carDetails = {
@@ -134,12 +136,12 @@ class OneclickdriveDetailParser {
             return carDetails;
 
         } catch (error) {
-            this.errorCount++;
+            errorCount++;
             console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
             
             // Отправляем уведомление в Telegram при критических ошибках
-            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
-                await this.sendErrorNotification(url, error);
+            if (telegramService.getStatus().enabled && errorCount % 10 === 0) {
+                await sendErrorNotification(url, error);
             }
             
             return null;
@@ -151,7 +153,7 @@ class OneclickdriveDetailParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(url, error) {
+    async function sendErrorNotification(url, error) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -159,7 +161,7 @@ class OneclickdriveDetailParser {
                           `URL: ${url}\n` +
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
-                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Всего ошибок: ${errorCount}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -167,7 +169,14 @@ class OneclickdriveDetailParser {
             console.warn(`⚠️ Ошибка отправки уведомления:`, telegramError.message);
         }
     }
+
+    // Возвращаем объект с методами
+    return {
+        parseCarDetails,
+        safeEval,
+        sendErrorNotification
+    };
 }
 
-module.exports = { OneclickdriveDetailParser };
+module.exports = { createOneclickdriveDetailParser };
 

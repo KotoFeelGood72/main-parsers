@@ -1,6 +1,6 @@
 const { createBaseParser } = require('../../BaseParser');
-const { OneclickdriveListingParser } = require('./entities/listing');
-const { OneclickdriveDetailParser } = require('./entities/detail');
+const { createOneclickdriveListingParser } = require('./entities/listing');
+const { createOneclickdriveDetailParser } = require('./entities/detail');
 const { saveData } = require('../../../utils/saveData');
 const { delay } = require('../../utils/parserHelpers');
 
@@ -19,8 +19,8 @@ function createOneclickdriveParser(config = {}) {
     };
 
     const baseParser = createBaseParser('OneClickDrive', parserConfig);
-    const listingParser = new OneclickdriveListingParser(parserConfig);
-    const detailParser = new OneclickdriveDetailParser(parserConfig);
+    const listingParser = createOneclickdriveListingParser(parserConfig);
+    const detailParser = createOneclickdriveDetailParser(parserConfig);
 
     /**
      * Получение списка объявлений

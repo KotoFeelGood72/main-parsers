@@ -1,18 +1,21 @@
 const { telegramService } = require('../../../../services/TelegramService');
 
 /**
- * Парсинг детальной информации для OpenSooq.com
+ * Парсинг детальной информации для OpenSooq.com (функциональный подход)
  */
 
-class OpenSooqDetailParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Счетчик ошибок для логирования
-        this.errorCount = 0;
-        
-        // Селекторы для детальной страницы OpenSooq
-        this.selectors = {
+/**
+ * Создание парсера детальной информации OpenSooq
+ */
+function createOpenSooqDetailParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Счетчик ошибок для логирования
+    let errorCount = 0;
+    
+    // Селекторы для детальной страницы OpenSooq
+    const selectors = {
             // Основные данные
             title: 'h1[data-id="postViewTitle"]',
             price: '[data-id="post_price"]',
@@ -46,7 +49,7 @@ class OpenSooqDetailParser {
         };
         
         // Поля для извлечения данных
-        this.dataFields = {
+        const dataFields = {
             make: ['Make', 'Марка', 'Brand', 'brand'],
             model: ['Model', 'Модель', 'Car Model', 'car model'],
             bodyType: ['Body type', 'Body Type', 'Тип кузова', 'body type', 'Body', 'body'],
@@ -54,12 +57,11 @@ class OpenSooqDetailParser {
             transmission: ['Transmission', 'Коробка передач', 'Gear', 'gear'],
             color: ['Color', 'Цвет', 'Exterior Color', 'exterior color']
         };
-    }
 
     /**
      * Парсинг детальной страницы автомобиля
      */
-    async parseCarDetails(url, context) {
+    async function parseCarDetails(url, context) {
         const page = await context.newPage();
 
         try {
@@ -77,9 +79,9 @@ class OpenSooqDetailParser {
             await page.waitForTimeout(2000);
 
             // Извлекаем основные поля
-            const title = await this.safeEval(page, this.selectors.title, el => el.textContent.trim()) || "Не указано";
-            const priceText = await this.safeEval(page, this.selectors.price, el => el.textContent.trim()) || "";
-            const location = await this.safeEval(page, this.selectors.location, el => el.textContent.trim()) || "Не указано";
+            const title = await safeEval(page, selectors.title, el => el.textContent.trim()) || "Не указано";
+            const priceText = await safeEval(page, selectors.price, el => el.textContent.trim()) || "";
+            const location = await safeEval(page, selectors.location, el => el.textContent.trim()) || "Не указано";
 
             // Парсим цену
             const priceFormatted = priceText.replace(/[^\d,]/g, "").trim();
@@ -118,7 +120,7 @@ class OpenSooqDetailParser {
                 });
                 
                 return result;
-            }, this.selectors);
+            }, selectors);
             
             const make = carDetailsData['Car Make'] || carDetailsData.make || "Не указано";
             const model = carDetailsData['Model'] || carDetailsData.model || "Не указано";
@@ -159,7 +161,7 @@ class OpenSooqDetailParser {
                 }
                 
                 return { name, sellerType, logo, profileLink };
-            }, this.selectors);
+            }, selectors);
             
             const sellerName = sellerData?.name || "Не указано";
             const sellerType = sellerData?.sellerType || "Частное лицо";
@@ -198,7 +200,7 @@ class OpenSooqDetailParser {
                         }
                         
                         return null;
-                    }, this.selectors);
+                    }, selectors);
                     
                     if (phoneData) {
                         phoneNumber = phoneData;
@@ -219,9 +221,9 @@ class OpenSooqDetailParser {
                     .map(img => img.getAttribute("src") || img.src)
                     .filter(src => src && src.trim().length > 0)
                     .filter((value, index, self) => self.indexOf(value) === index); // Убираем дубликаты
-            }, this.selectors.images) || [];
+            }, selectors.images) || [];
 
-            const mainImage = await this.safeEval(page, this.selectors.mainImage, el => el.src) || (photos.length > 0 ? photos[0] : null);
+            const mainImage = await safeEval(page, selectors.mainImage, el => el.src) || (photos.length > 0 ? photos[0] : null);
 
             // Составляем итоговый объект
             const carDetails = {
@@ -263,12 +265,12 @@ class OpenSooqDetailParser {
             return carDetails;
 
         } catch (error) {
-            this.errorCount++;
+            errorCount++;
             console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
             
             // Отправляем уведомление в Telegram при критических ошибках
-            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
-                await this.sendErrorNotification(url, error);
+            if (telegramService.getStatus().enabled && errorCount % 10 === 0) {
+                await sendErrorNotification(url, error);
             }
             
             return null;
@@ -280,7 +282,7 @@ class OpenSooqDetailParser {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(url, error) {
+    async function sendErrorNotification(url, error) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -288,7 +290,7 @@ class OpenSooqDetailParser {
                           `URL: ${url}\n` +
                           `Ошибка: ${error.name || 'Unknown'}\n` +
                           `Сообщение: ${error.message}\n` +
-                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Всего ошибок: ${errorCount}\n` +
                           `Время: ${new Date().toLocaleString('ru-RU')}`;
 
             await telegramService.sendMessage(message);
@@ -300,7 +302,7 @@ class OpenSooqDetailParser {
     /**
      * Безопасное выполнение eval на странице
      */
-    async safeEval(page, selector, fn) {
+    async function safeEval(page, selector, fn) {
         try {
             return await page.$eval(selector, fn);
         } catch {
@@ -311,12 +313,20 @@ class OpenSooqDetailParser {
     /**
      * Выбор первого непустого значения из объекта
      */
-    pick(map, keys, def = null) {
+    function pick(map, keys, def = null) {
         for (const k of keys) {
             if (map[k] != null) return map[k];
         }
         return def;
     }
+
+    // Возвращаем объект с методами
+    return {
+        parseCarDetails,
+        safeEval,
+        sendErrorNotification,
+        pick
+    };
 }
 
-module.exports = { OpenSooqDetailParser };
+module.exports = { createOpenSooqDetailParser };

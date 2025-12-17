@@ -1,18 +1,21 @@
 const { telegramService } = require('../../../../services/TelegramService');
 
 /**
- * Парсинг детальной информации для Sharrai.ae
+ * Парсинг детальной информации для Sharrai.ae (функциональный подход)
  */
 
-class SharraiDetailParser {
-    constructor(config) {
-        this.config = config;
-        
-        // Счетчик ошибок для логирования
-        this.errorCount = 0;
-        
-        // Селекторы для детальной страницы Sharrai
-        this.selectors = {
+/**
+ * Создание парсера детальной информации Sharrai
+ */
+function createSharraiDetailParser(config) {
+    // Конфигурация
+    const parserConfig = config;
+    
+    // Счетчик ошибок для логирования
+    let errorCount = 0;
+    
+    // Селекторы для детальной страницы Sharrai
+    const selectors = {
             // Основные данные
             title: 'h1, [class*="title"], [class*="car-title"]',
             price: '[class*="price"], [class*="amount"], [class*="cost"]',
@@ -47,7 +50,7 @@ class SharraiDetailParser {
         };
         
         // Поля для извлечения данных
-        this.dataFields = {
+        const dataFields = {
             make: ['Make', 'Марка', 'Brand', 'brand'],
             model: ['Model', 'Модель', 'Car Model', 'car model'],
             bodyType: ['Body type', 'Body Type', 'Тип кузова', 'body type', 'Body', 'body'],
@@ -55,12 +58,11 @@ class SharraiDetailParser {
             transmission: ['Transmission', 'Коробка передач', 'Gear', 'gear'],
             color: ['Color', 'Цвет', 'Exterior Color', 'exterior color']
         };
-    }
 
     /**
      * Парсинг детальной страницы автомобиля
      */
-    async parseCarDetails(url, context) {
+    async function parseCarDetails(url, context) {
         const page = await context.newPage();
 
         try {
@@ -77,7 +79,7 @@ class SharraiDetailParser {
             await page.waitForTimeout(3000);
 
             // Извлекаем основные поля
-            const title = await this.safeEval(page, this.selectors.title, el => el.textContent.trim()) || "Не указано";
+            const title = await safeEval(page, selectors.title, el => el.textContent.trim()) || "Не указано";
             
             // Извлекаем цену
             let priceData = { formatted: "Не указано", raw: 0 };
@@ -96,13 +98,13 @@ class SharraiDetailParser {
                         }
                     }
                     return { formatted: "Не указано", raw: 0 };
-                }, this.selectors);
+                }, selectors);
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения price:`, error.message);
             }
 
             // Извлекаем локацию
-            const location = await this.safeEval(page, this.selectors.location, el => el.textContent.trim()) || "Не указано";
+            const location = await safeEval(page, selectors.location, el => el.textContent.trim()) || "Не указано";
 
             // Извлекаем детали автомобиля
             let make = "Не указано";
@@ -172,7 +174,7 @@ class SharraiDetailParser {
                     }
                     
                     return details;
-                }, this.selectors);
+                }, selectors);
                 
                 make = carDetails.make || "Не указано";
                 model = carDetails.model || "Не указано";
@@ -217,7 +219,7 @@ class SharraiDetailParser {
                     }
                     
                     return info;
-                }, this.selectors);
+                }, selectors);
                 
                 sellerName = sellerInfo.sellerName || "Не указано";
                 sellerType = sellerInfo.sellerType || "Частное лицо";
@@ -231,7 +233,7 @@ class SharraiDetailParser {
             let phoneNumber = "Не указан";
             try {
                 // Пробуем найти кнопку с телефоном
-                const phoneButton = await page.$(this.selectors.phoneButton);
+                const phoneButton = await page.$(selectors.phoneButton);
                 if (phoneButton) {
                     await phoneButton.click();
                     await page.waitForTimeout(1000);
@@ -256,7 +258,7 @@ class SharraiDetailParser {
                     }
                     
                     return "Не указан";
-                }, this.selectors);
+                }, selectors);
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения телефона:`, error.message);
             }
@@ -283,7 +285,7 @@ class SharraiDetailParser {
                         : (images.length > 0 ? images[0] : null);
                     
                     return { images: [...new Set(images)], mainImage: mainImg };
-                }, this.selectors);
+                }, selectors);
                 
                 photos = imagesData.images || [];
                 mainImage = imagesData.mainImage || (photos.length > 0 ? photos[0] : null);
@@ -374,5 +376,5 @@ class SharraiDetailParser {
     }
 }
 
-module.exports = { SharraiDetailParser };
+module.exports = { createSharraiDetailParser };
 

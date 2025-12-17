@@ -1,6 +1,6 @@
 const { createBaseParser } = require('../../BaseParser');
-const { SharraiListingParser } = require('./entities/listing');
-const { SharraiDetailParser } = require('./entities/detail');
+const { createSharraiListingParser } = require('./entities/listing');
+const { createSharraiDetailParser } = require('./entities/detail');
 const { saveData } = require('../../../utils/saveData');
 
 /**
@@ -18,8 +18,8 @@ function createSharraiParser(config = {}) {
     };
 
     const baseParser = createBaseParser('Sharrai', parserConfig);
-    const listingParser = new SharraiListingParser(parserConfig);
-    const detailParser = new SharraiDetailParser(parserConfig);
+    const listingParser = createSharraiListingParser(parserConfig);
+    const detailParser = createSharraiDetailParser(parserConfig);
 
     /**
      * Получение списка объявлений

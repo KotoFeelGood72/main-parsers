@@ -1,7 +1,7 @@
 const { createBaseParser } = require('../../BaseParser');
 const { saveData } = require('../../../utils/saveData');
-const { DubicarsListingParser } = require('./entities/listing');
-const { DubicarsDetailParser } = require('./entities/detail');
+const { createDubicarsListingParser } = require('./entities/listing');
+const { createDubicarsDetailParser } = require('./entities/detail');
 const { delay } = require('../../utils/parserHelpers');
 
 /**
@@ -15,8 +15,8 @@ function createDubicarsParser(config) {
     };
 
     const baseParser = createBaseParser('Dubicars', parserConfig);
-    const listingParser = new DubicarsListingParser(parserConfig);
-    const detailParser = new DubicarsDetailParser(parserConfig);
+    const listingParser = createDubicarsListingParser(parserConfig);
+    const detailParser = createDubicarsDetailParser(parserConfig);
 
     /**
      * Получение списка объявлений
