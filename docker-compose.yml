@@ -40,8 +40,10 @@ services:
 
 networks:
   network:
+    name: main-parsers_network
     driver: bridge
 
 volumes:
   postgres_data:
     name: postgres_data
+    external: true

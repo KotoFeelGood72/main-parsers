@@ -42,8 +42,14 @@ jobs:
             echo "=== Stopping and removing old containers ==="
             docker-compose down --remove-orphans || true
             
+            # Создаем том, если его нет
+            docker volume create postgres_data 2>/dev/null || true
+            
             # Удаляем контейнеры по имени, если они все еще существуют
             docker rm -f car_parser auto_db 2>/dev/null || true
+            
+            # Удаляем старую сеть, если она существует
+            docker network rm main-parsers_network 2>/dev/null || true
             
             # Удаляем старые образы парсера
             echo "=== Removing old parser images ==="
