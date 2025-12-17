@@ -146,6 +146,16 @@ function createErrorHandler(config = {}) {
      * Обработка системной ошибки
      */
     async function handleSystemError(component, error, context = {}) {
+        // Если это предупреждение (например, БД недоступна, но система может работать без неё)
+        if (context.isWarning || context.skipCritical) {
+            // Логируем как предупреждение, а не как критическую ошибку
+            state.logger.logWarning(`System Warning [${component}]:`, {
+                error: error.message,
+                context
+            });
+            return; // Не отправляем уведомления в Telegram для предупреждений
+        }
+        
         await state.logger.logSystemError(component, error, context);
 
         if (state.config.enableTelegram) {

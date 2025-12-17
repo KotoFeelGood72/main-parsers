@@ -117,9 +117,16 @@ async function checkPageContent(page, contentSelector, options = {}) {
 
         if (typeof contentSelector === 'function') {
             // Если переданная функция, вызываем её
-            const result = await page.evaluate(contentSelector);
-            hasContent = result.hasContent || result.count >= minItems;
-            count = result.count || 0;
+            try {
+                const result = await page.evaluate(contentSelector);
+                hasContent = result.hasContent || result.count >= minItems;
+                count = result.count || 0;
+                console.log(`✅ Функция проверки контента выполнена: hasContent=${hasContent}, count=${count}`);
+            } catch (evalError) {
+                console.warn(`⚠️ Ошибка при выполнении функции проверки контента:`, evalError.message);
+                hasContent = false;
+                count = 0;
+            }
         } else {
             // Если передан селектор, проверяем количество элементов
             try {
@@ -187,10 +194,15 @@ async function* paginatePages(context, config) {
 
             try {
                 // Загружаем страницу
+                console.log(`🌐 Загружаем страницу ${currentPage}: ${url}`);
                 await page.goto(url, {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 30000
+                    waitUntil: 'networkidle', // Ждем завершения сетевых запросов для динамического контента
+                    timeout: 60000 // Увеличиваем таймаут до 60 секунд
                 });
+                console.log(`✅ Страница ${currentPage} загружена`);
+                
+                // Дополнительное ожидание для полной загрузки динамического контента
+                await page.waitForTimeout(2000);
 
                 // Вызываем callback при загрузке страницы
                 if (onPageLoad) {
@@ -198,11 +210,13 @@ async function* paginatePages(context, config) {
                 }
 
                 // Проверяем наличие контента
+                console.log(`🔍 Проверяем контент на странице ${currentPage}...`);
                 const { hasContent, count } = await checkPageContent(
                     page,
                     contentSelector,
                     contentOptions
                 );
+                console.log(`📊 Результат проверки страницы ${currentPage}: hasContent=${hasContent}, count=${count}`);
 
                 // Вызываем callback после проверки контента
                 if (onPageContent) {

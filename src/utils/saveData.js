@@ -37,6 +37,12 @@ async function saveData(carDetails) {
 
     let client;
     try {
+        // Проверяем доступность БД перед попыткой подключения
+        if (!process.env.DB_HOST) {
+            console.log("⚠️ Переменные окружения БД не настроены, пропускаем сохранение в БД");
+            return; // Выходим без ошибки, если БД не настроена
+        }
+        
         client = await pool.connect();
         await client.query("BEGIN");
 
@@ -142,29 +148,27 @@ async function saveData(carDetails) {
         }
 
         await client.query("COMMIT");
-    } catch (error) {
+        } catch (error) {
         if (client) {
             try { await client.query("ROLLBACK"); } catch (_) {}
         }
-        console.error("❌ Ошибка записи в базу данных:", error.message);
-        console.error("❌ Полная ошибка:", error);
         
-        // Если ошибка связана с соединением, попробуем переподключиться
-        if (error.message.includes('Connection terminated') || 
-            error.message.includes('ECONNRESET') || 
+        // Если ошибка подключения к БД - это не критическая ошибка парсера
+        if (error.code === 'ECONNREFUSED' || 
+            error.message.includes('ECONNREFUSED') ||
+            error.message.includes('Connection terminated') ||
+            error.message.includes('ECONNRESET') ||
             error.message.includes('ENOTFOUND')) {
-            console.log("🔄 Попытка переподключения к БД...");
-            try {
-                // Ждем немного перед переподключением
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return await saveData(carDetails); // Рекурсивный вызов
-            } catch (retryError) {
-                console.error("❌ Не удалось переподключиться:", retryError.message);
-                throw retryError; // Пробрасываем ошибку дальше
-            }
+            console.log("⚠️ База данных недоступна, данные не сохранены (парсер продолжает работу)");
+            // Не пробрасываем ошибку дальше, чтобы не прерывать работу парсера
+            return;
         }
         
-        throw error; // Пробрасываем ошибку дальше
+        // Для других ошибок БД логируем, но не прерываем работу
+        console.warn("⚠️ Ошибка записи в базу данных:", error.message);
+        
+        // Не пробрасываем ошибку, чтобы парсер продолжал работу
+        return;
     } finally {
         if (client) {
             try {

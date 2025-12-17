@@ -14,39 +14,29 @@ function createSharraiDetailParser(config) {
     // Счетчик ошибок для логирования
     let errorCount = 0;
     
-    // Селекторы для детальной страницы Sharrai
+    // Селекторы для детальной страницы Sharrai (обновлены под реальную структуру)
     const selectors = {
             // Основные данные
-            title: 'h1, [class*="title"], [class*="car-title"]',
-            price: '[class*="price"], [class*="amount"], [class*="cost"]',
-            location: '[class*="location"], [class*="address"], [class*="city"]',
+            title: 'h1',
+            price: '.dealerLocation.title h2, .carDetailsRight h2',
+            location: '.dealerLocation:has(img[src*="location"]) a, .dealerLocation:has-text("Location")',
             
-            // Детали автомобиля
-            carDetails: '[class*="details"], [class*="specs"], [class*="specifications"]',
-            make: '[class*="make"], [data-field="make"]',
-            model: '[class*="model"], [data-field="model"]',
-            year: '[class*="year"], [data-field="year"]',
-            bodyType: '[class*="body-type"], [class*="bodyType"], [data-field="bodyType"]',
-            fuelType: '[class*="fuel"], [class*="fuel-type"], [data-field="fuelType"]',
-            transmission: '[class*="transmission"], [class*="gear"], [data-field="transmission"]',
-            mileage: '[class*="mileage"], [class*="km"], [class*="kilometers"], [data-field="mileage"]',
-            color: '[class*="color"], [class*="exterior-color"], [data-field="color"]',
-            cylinders: '[class*="cylinder"], [class*="cylinders"], [data-field="cylinders"]',
+            // Детали автомобиля из карусели
+            overviewCarousel: '.singleOverViewSlider',
+            additionalDetails: '.additionalDetailsGrid ul li',
             
             // Продавец
-            sellerInfo: '[class*="seller"], [class*="dealer"], [class*="owner"]',
-            sellerName: '[class*="seller-name"], [class*="dealer-name"]',
-            sellerType: '[class*="seller-type"], [class*="dealer-type"]',
-            sellerLogo: '[class*="seller-logo"] img, [class*="dealer-logo"] img',
-            sellerProfileLink: 'a[href*="/dealer/"], a[href*="/seller/"]',
+            sellerInfo: '.dealerLocation:has(img[src*="dealer-icon"])',
+            sellerName: '.dealerLocation:has(img[src*="dealer-icon"]) a.link',
+            sellerProfileLink: 'a[href*="/dealer-detail/"]',
             
             // Телефон
-            phone: '[class*="phone"], [class*="contact"], a[href^="tel:"]',
-            phoneButton: 'button[class*="phone"], button[class*="call"]',
+            phone: 'a.show-number[data-number], a[href^="tel:"]',
+            phoneButton: 'a.show-number',
             
             // Изображения
-            images: 'img[class*="car"], img[class*="photo"], img[class*="image"]',
-            mainImage: 'img[class*="main"], [class*="main-image"] img, [class*="featured-image"] img'
+            images: '#sync1 .owl-item img, #sync1 img, .car_details_img img',
+            mainImage: '#sync1 .owl-item.active img, #sync1 .owl-item:first-child img'
         };
         
         // Поля для извлечения данных
@@ -69,26 +59,39 @@ function createSharraiDetailParser(config) {
             console.log(`🚗 Переходим к ${url}`);
 
             await page.goto(url, {
-                waitUntil: "domcontentloaded",
-                timeout: 30000
+                waitUntil: "networkidle",
+                timeout: 60000
             });
 
             console.log("📄 Загружаем данные...");
 
             // Ждем загрузки основных элементов
             await page.waitForTimeout(3000);
+            
+            // Дополнительное ожидание для загрузки карусели изображений
+            try {
+                await page.waitForSelector('#sync1, .car_details_img, h1', { timeout: 10000 });
+            } catch (e) {
+                console.warn("⚠️ Некоторые элементы не загрузились, продолжаем...");
+            }
+
+            // Ждем загрузки основных элементов
+            await page.waitForSelector('h1, .carDetailsRight', { timeout: 30000 });
+            await page.waitForTimeout(2000); // Дополнительное ожидание для динамического контента
 
             // Извлекаем основные поля
             const title = await safeEval(page, selectors.title, el => el.textContent.trim()) || "Не указано";
+            console.log(`📝 Заголовок: ${title}`);
             
             // Извлекаем цену
             let priceData = { formatted: "Не указано", raw: 0 };
             try {
-                priceData = await page.evaluate((selectors) => {
-                    const priceEl = document.querySelector(selectors.price);
+                priceData = await page.evaluate(() => {
+                    const priceEl = document.querySelector('.dealerLocation.title h2, .carDetailsRight h2');
                     if (priceEl) {
                         const text = priceEl.textContent.trim();
-                        const match = text.match(/([\d,]+)/);
+                        // Ищем цену в формате "AED 25,500"
+                        const match = text.match(/AED\s*([\d,]+)/i) || text.match(/([\d,]+)/);
                         if (match) {
                             const numeric = match[1].replace(/,/g, '');
                             return {
@@ -98,15 +101,35 @@ function createSharraiDetailParser(config) {
                         }
                     }
                     return { formatted: "Не указано", raw: 0 };
-                }, selectors);
+                });
+                console.log(`💰 Цена: ${priceData.formatted}`);
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения price:`, error.message);
             }
 
             // Извлекаем локацию
-            const location = await safeEval(page, selectors.location, el => el.textContent.trim()) || "Не указано";
+            let location = "Не указано";
+            try {
+                location = await page.evaluate(() => {
+                    // Ищем локацию в блоке с иконкой location
+                    const locationBlocks = Array.from(document.querySelectorAll('.dealerLocation'));
+                    for (const block of locationBlocks) {
+                        const img = block.querySelector('img[src*="location"]');
+                        if (img) {
+                            const link = block.querySelector('a');
+                            if (link && link.textContent.trim()) {
+                                return link.textContent.trim();
+                            }
+                        }
+                    }
+                    return "Не указано";
+                });
+                console.log(`📍 Локация: ${location}`);
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения локации:`, error.message);
+            }
 
-            // Извлекаем детали автомобиля
+            // Извлекаем детали автомобиля из карусели и дополнительных деталей
             let make = "Не указано";
             let model = "Не указано";
             let year = "Не указано";
@@ -118,63 +141,71 @@ function createSharraiDetailParser(config) {
             let cylinders = "Не указано";
 
             try {
-                const carDetails = await page.evaluate((selectors) => {
+                const carDetails = await page.evaluate(() => {
                     const details = {};
                     
-                    // Извлекаем make
-                    const makeEl = document.querySelector(selectors.make);
-                    if (makeEl) details.make = makeEl.textContent.trim();
-                    
-                    // Извлекаем model
-                    const modelEl = document.querySelector(selectors.model);
-                    if (modelEl) details.model = modelEl.textContent.trim();
-                    
-                    // Извлекаем year
-                    const yearEl = document.querySelector(selectors.year);
-                    if (yearEl) {
-                        const yearText = yearEl.textContent.trim();
-                        const yearMatch = yearText.match(/\d{4}/);
-                        if (yearMatch) details.year = yearMatch[0];
-                    }
-                    
-                    // Извлекаем bodyType
-                    const bodyTypeEl = document.querySelector(selectors.bodyType);
-                    if (bodyTypeEl) details.bodyType = bodyTypeEl.textContent.trim();
-                    
-                    // Извлекаем fuelType
-                    const fuelTypeEl = document.querySelector(selectors.fuelType);
-                    if (fuelTypeEl) details.fuelType = fuelTypeEl.textContent.trim();
-                    
-                    // Извлекаем transmission
-                    const transmissionEl = document.querySelector(selectors.transmission);
-                    if (transmissionEl) details.transmission = transmissionEl.textContent.trim();
-                    
-                    // Извлекаем mileage
-                    const mileageEl = document.querySelector(selectors.mileage);
-                    if (mileageEl) {
-                        const mileageText = mileageEl.textContent.trim();
-                        const mileageMatch = mileageText.match(/([\d,]+)/);
-                        if (mileageMatch) {
-                            details.mileage = mileageMatch[1].replace(/,/g, '');
+                    // Извлекаем данные из карусели .singleOverViewSlider
+                    const overviewItems = Array.from(document.querySelectorAll('.singleOverViewSlider'));
+                    for (const item of overviewItems) {
+                        const label = item.querySelector('p')?.textContent.trim().toLowerCase() || '';
+                        const value = item.querySelector('h5')?.textContent.trim() || '';
+                        
+                        // Проверяем в правильном порядке, чтобы не перезаписать значения
+                        if (label.includes('transmission')) {
+                            // Transmission Type - это трансмиссия (Automatic, Manual)
+                            details.transmission = value;
+                        } else if (label.includes('model') && !label.includes('car model') && !label.includes('car-model')) {
+                            // "Model" в карусели - это тип кузова (Sedan, SUV и т.д.), не модель автомобиля
+                            details.bodyType = value;
+                        } else if (label.includes('year')) {
+                            const yearMatch = value.match(/\d{4}/);
+                            if (yearMatch) details.year = yearMatch[0];
+                        } else if (label.includes('mileage') || label.includes('km')) {
+                            // Извлекаем пробег, убираем "K KM" и преобразуем
+                            const kmMatch = value.match(/([\d.]+)\s*K?\s*KM?/i);
+                            if (kmMatch) {
+                                const kmValue = parseFloat(kmMatch[1]);
+                                // Если значение меньше 1000, значит это уже в тысячах (например "64K KM" = 64000)
+                                details.mileage = kmValue < 1000 ? Math.round(kmValue * 1000).toString() : Math.round(kmValue).toString();
+                            } else {
+                                details.mileage = value.replace(/[^\d]/g, '');
+                            }
+                        } else if (label.includes('cylinder')) {
+                            const cylMatch = value.match(/(\d+)/);
+                            if (cylMatch) details.cylinders = cylMatch[1];
                         }
                     }
                     
-                    // Извлекаем color
-                    const colorEl = document.querySelector(selectors.color);
-                    if (colorEl) details.color = colorEl.textContent.trim();
+                    // Извлекаем данные из дополнительных деталей
+                    const additionalItems = Array.from(document.querySelectorAll('.additionalDetailsGrid li'));
+                    for (const item of additionalItems) {
+                        const strong = item.querySelector('strong')?.textContent.trim() || '';
+                        const span = item.querySelector('span')?.textContent.trim() || '';
+                        
+                        if (strong.includes('Fuel Type') || strong.includes('Fuel')) {
+                            details.fuelType = span;
+                        } else if (strong.includes('Color') || strong.includes('Colour')) {
+                            details.color = span;
+                        } else if (strong.includes('Engine Capacity') || strong.includes('HP')) {
+                            // Можно использовать для horsepower
+                            details.horsepower = span;
+                        }
+                    }
                     
-                    // Извлекаем cylinders
-                    const cylindersEl = document.querySelector(selectors.cylinders);
-                    if (cylindersEl) {
-                        const cylindersText = cylindersEl.textContent.trim();
-                        const cylindersMatch = cylindersText.match(/(\d+)/);
-                        if (cylindersMatch) {
-                            details.cylinders = cylindersMatch[1];
+                    // Извлекаем make и model из заголовка h1 (например "Nissan Sentra 2021")
+                    const titleEl = document.querySelector('h1');
+                    if (titleEl) {
+                        const titleText = titleEl.textContent.trim();
+                        // Пробуем извлечь марку и модель (первые два слова обычно)
+                        const words = titleText.split(/\s+/);
+                        if (words.length >= 2) {
+                            details.make = words[0];
+                            details.model = words.slice(1, -1).join(' '); // Все слова кроме последнего (год)
                         }
                     }
                     
                     return details;
-                }, selectors);
+                });
                 
                 make = carDetails.make || "Не указано";
                 model = carDetails.model || "Не указано";
@@ -185,6 +216,8 @@ function createSharraiDetailParser(config) {
                 kilometers = carDetails.mileage || "0";
                 exteriorColor = carDetails.color || "Не указано";
                 cylinders = carDetails.cylinders || "Не указано";
+                
+                console.log(`🚗 Детали: ${make} ${model} ${year}, ${bodyType}, ${transmission}, ${kilometers} км`);
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения деталей автомобиля:`, error.message);
             }
@@ -196,35 +229,44 @@ function createSharraiDetailParser(config) {
             let sellerProfileLink = null;
 
             try {
-                const sellerInfo = await page.evaluate((selectors) => {
+                const sellerInfo = await page.evaluate(() => {
                     const info = {};
                     
-                    const sellerNameEl = document.querySelector(selectors.sellerName);
-                    if (sellerNameEl) info.sellerName = sellerNameEl.textContent.trim();
-                    
-                    const sellerTypeEl = document.querySelector(selectors.sellerType);
-                    if (sellerTypeEl) {
-                        const typeText = sellerTypeEl.textContent.trim().toLowerCase();
-                        info.sellerType = typeText.includes('dealer') || typeText.includes('дилер') ? 'Дилер' : 'Частное лицо';
-                    }
-                    
-                    const sellerLogoEl = document.querySelector(selectors.sellerLogo);
-                    if (sellerLogoEl && sellerLogoEl.src) {
-                        info.sellerLogo = sellerLogoEl.src.startsWith('http') ? sellerLogoEl.src : `https://sharrai.ae${sellerLogoEl.src}`;
-                    }
-                    
-                    const sellerLinkEl = document.querySelector(selectors.sellerProfileLink);
-                    if (sellerLinkEl && sellerLinkEl.href) {
-                        info.sellerProfileLink = sellerLinkEl.href.startsWith('http') ? sellerLinkEl.href : `https://sharrai.ae${sellerLinkEl.href}`;
+                    // Ищем блок с информацией о дилере
+                    const dealerBlocks = Array.from(document.querySelectorAll('.dealerLocation'));
+                    for (const block of dealerBlocks) {
+                        const img = block.querySelector('img[src*="dealer-icon"]');
+                        if (img) {
+                            // Находим ссылку на профиль дилера
+                            const link = block.querySelector('a.link[href*="/dealer-detail/"]');
+                            if (link) {
+                                info.sellerProfileLink = link.href.startsWith('http') ? link.href : `https://sharrai.ae${link.href}`;
+                                // Имя дилера может быть в тексте ссылки или в span
+                                const span = block.querySelector('span');
+                                if (span) {
+                                    info.sellerName = span.textContent.trim();
+                                } else {
+                                    // Пробуем извлечь из URL
+                                    const urlMatch = link.href.match(/\/dealer-detail\/([^\/]+)/);
+                                    if (urlMatch) {
+                                        info.sellerName = urlMatch[1].replace(/-/g, ' ');
+                                    }
+                                }
+                                info.sellerType = 'Дилер';
+                                break;
+                            }
+                        }
                     }
                     
                     return info;
-                }, selectors);
+                });
                 
                 sellerName = sellerInfo.sellerName || "Не указано";
                 sellerType = sellerInfo.sellerType || "Частное лицо";
                 sellerLogo = sellerInfo.sellerLogo || null;
                 sellerProfileLink = sellerInfo.sellerProfileLink || null;
+                
+                console.log(`👤 Продавец: ${sellerName} (${sellerType})`);
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения информации о продавце:`, error.message);
             }
@@ -232,22 +274,12 @@ function createSharraiDetailParser(config) {
             // Извлекаем телефон
             let phoneNumber = "Не указан";
             try {
-                // Пробуем найти кнопку с телефоном
-                const phoneButton = await page.$(selectors.phoneButton);
-                if (phoneButton) {
-                    await phoneButton.click();
-                    await page.waitForTimeout(1000);
-                }
-                
-                phoneNumber = await page.evaluate((selectors) => {
-                    // Ищем телефон в различных местах
-                    const phoneEl = document.querySelector(selectors.phone);
-                    if (phoneEl) {
-                        const phoneText = phoneEl.textContent || phoneEl.getAttribute('href')?.replace('tel:', '');
-                        if (phoneText) {
-                            const phoneMatch = phoneText.match(/\+?\d{1,3}[\s-]?\d{1,4}[\s-]?\d{1,4}[\s-]?\d{1,9}/);
-                            if (phoneMatch) return phoneMatch[0];
-                        }
+                phoneNumber = await page.evaluate(() => {
+                    // Сначала ищем в data-number атрибуте кнопки
+                    const phoneButton = document.querySelector('a.show-number[data-number]');
+                    if (phoneButton) {
+                        const phone = phoneButton.getAttribute('data-number');
+                        if (phone) return phone.trim();
                     }
                     
                     // Ищем все ссылки tel:
@@ -258,37 +290,59 @@ function createSharraiDetailParser(config) {
                     }
                     
                     return "Не указан";
-                }, selectors);
+                });
+                console.log(`📞 Телефон: ${phoneNumber}`);
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения телефона:`, error.message);
             }
 
-            // Извлекаем изображения
+            // Извлекаем изображения из карусели
             let photos = [];
             let mainImage = null;
             try {
-                const imagesData = await page.evaluate((selectors) => {
+                const imagesData = await page.evaluate(() => {
                     const images = [];
-                    const imageElements = document.querySelectorAll(selectors.images);
+                    const uniqueUrls = new Set();
+                    
+                    // Извлекаем все изображения из карусели #sync1
+                    const imageElements = document.querySelectorAll('#sync1 .owl-item img, #sync1 img, .car_details_img img');
                     
                     for (const img of imageElements) {
-                        if (img.src && img.src.startsWith('http')) {
-                            images.push(img.src);
-                        } else if (img.src && !img.src.startsWith('data:')) {
-                            images.push(`https://sharrai.ae${img.src.startsWith('/') ? img.src : '/' + img.src}`);
+                        if (img.src && !img.src.includes('data:') && !img.src.includes('placeholder')) {
+                            let imageUrl = img.src;
+                            
+                            // Нормализуем URL
+                            if (!imageUrl.startsWith('http')) {
+                                imageUrl = `https://sharrai.ae${imageUrl.startsWith('/') ? imageUrl : '/' + imageUrl}`;
+                            }
+                            
+                            // Убираем параметры для получения оригинального изображения
+                            imageUrl = imageUrl.split('?')[0];
+                            
+                            if (!uniqueUrls.has(imageUrl)) {
+                                uniqueUrls.add(imageUrl);
+                                images.push(imageUrl);
+                            }
                         }
                     }
                     
-                    const mainImgEl = document.querySelector(selectors.mainImage);
-                    const mainImg = mainImgEl && mainImgEl.src 
-                        ? (mainImgEl.src.startsWith('http') ? mainImgEl.src : `https://sharrai.ae${mainImgEl.src.startsWith('/') ? mainImgEl.src : '/' + mainImgEl.src}`)
-                        : (images.length > 0 ? images[0] : null);
+                    // Главное изображение - первое активное или первое в списке
+                    const activeImg = document.querySelector('#sync1 .owl-item.active img, #sync1 .owl-item:first-child img');
+                    let mainImg = null;
+                    if (activeImg && activeImg.src) {
+                        mainImg = activeImg.src.startsWith('http') 
+                            ? activeImg.src.split('?')[0]
+                            : `https://sharrai.ae${activeImg.src.startsWith('/') ? activeImg.src : '/' + activeImg.src}`.split('?')[0];
+                    } else if (images.length > 0) {
+                        mainImg = images[0];
+                    }
                     
-                    return { images: [...new Set(images)], mainImage: mainImg };
-                }, selectors);
+                    return { images: images, mainImage: mainImg };
+                });
                 
                 photos = imagesData.images || [];
                 mainImage = imagesData.mainImage || (photos.length > 0 ? photos[0] : null);
+                console.log(`📸 Найдено изображений: ${photos.length}`);
             } catch (error) {
                 console.warn(`⚠️ Ошибка извлечения изображений:`, error.message);
             }
@@ -305,7 +359,7 @@ function createSharraiDetailParser(config) {
                 body_type: bodyType || "Не указано",
                 horsepower: cylinders ? `${cylinders} цилиндров` : "Не указано",
                 fuel_type: fuelType || "Не указано",
-                motors_trim: transmission || "Не указано",
+                motors_trim: transmission || "Не указано", // motors_trim используется для хранения типа трансмиссии
                 kilometers: kilometers || "0",
                 seller_name: sellerName || "Не указано",
                 seller_type: sellerType || "Частное лицо",
@@ -364,11 +418,12 @@ function createSharraiDetailParser(config) {
      */
     async function safeEval(page, selector, fn, defaultValue = null) {
         try {
-            const element = await page.$(selector);
-            if (!element) {
-                return defaultValue;
-            }
-            return await page.evaluate(fn, element);
+            const result = await page.evaluate((sel) => {
+                const element = document.querySelector(sel);
+                if (!element) return null;
+                return element.textContent.trim();
+            }, selector);
+            return result !== null ? result : defaultValue;
         } catch (error) {
             console.warn(`⚠️ Ошибка в safeEval для селектора ${selector}:`, error.message);
             return defaultValue;

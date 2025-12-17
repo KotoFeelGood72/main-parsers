@@ -15,7 +15,15 @@ function createDatabaseManager() {
      * Инициализация базы данных
      */
     async function initialize() {
-        const client = await pool.connect();
+        let client = null;
+        
+        try {
+            // Пробуем подключиться к базе данных
+            client = await pool.connect();
+        } catch (connectError) {
+            // Если не удалось подключиться, выбрасываем ошибку для обработки выше
+            throw connectError;
+        }
         
         try {
             await client.query("BEGIN");
@@ -43,11 +51,23 @@ function createDatabaseManager() {
             return true;
 
         } catch (error) {
-            await client.query("ROLLBACK");
+            if (client) {
+                try {
+                    await client.query("ROLLBACK");
+                } catch (rollbackError) {
+                    // Игнорируем ошибки отката
+                }
+            }
             console.error("❌ Ошибка при инициализации базы данных:", error);
-            return false;
+            throw error; // Пробрасываем ошибку дальше
         } finally {
-            client.release();
+            if (client) {
+                try {
+                    client.release();
+                } catch (releaseError) {
+                    // Игнорируем ошибки освобождения клиента
+                }
+            }
         }
     }
 

@@ -122,7 +122,13 @@ function createParserRunner() {
                 try {
                     const rawData = await parser.parseListing(link);
                     if (rawData) {
-                        await saveData(rawData);
+                        try {
+                            await saveData(rawData);
+                        } catch (saveError) {
+                            // Ошибки сохранения в БД не должны прерывать работу парсера
+                            // Они уже обработаны в saveData.js
+                            console.warn(`⚠️ Не удалось сохранить данные для ${link}, продолжаем работу...`);
+                        }
                         processedCount++;
                         state.memoryCheckCounter++;
 
@@ -301,11 +307,17 @@ function createParserRunner() {
         try {
             await databaseManager.initialize();
         } catch (error) {
-            console.error("❌ База данных недоступна, используем файлы");
-            await errorHandler.handleSystemError('database', error, {
-                component: 'ParserRunner',
-                action: 'initialize'
-            });
+            console.log("⚠️ База данных недоступна, используем файлы для сохранения данных");
+            // Не логируем как критическую ошибку, так как система может работать без БД
+            // Логируем только как предупреждение
+            if (errorHandler && errorHandler.handleSystemError) {
+                await errorHandler.handleSystemError('database', error, {
+                    component: 'ParserRunner',
+                    action: 'initialize',
+                    isWarning: true, // Помечаем как предупреждение, а не критическую ошибку
+                    skipCritical: true // Пропускаем обработку как критической ошибки
+                });
+            }
         }
 
         try {
