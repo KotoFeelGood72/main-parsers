@@ -114,6 +114,6 @@ deploy_info.txt
 tmp/
 temp/
 
-# Package files (if you want to ignore package.json changes)
-package.json
-package-lock.json
+# Package files are needed for Docker build, so we keep them in git
+# package.json
+# package-lock.json
