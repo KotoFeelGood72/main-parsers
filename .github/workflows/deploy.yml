@@ -1,56 +1,45 @@
-name: Deploy Parser
+name: Deploy to Server
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch: # Позволяет запускать вручную из GitHub UI
+  workflow_dispatch:
 
 jobs:
   deploy:
-    name: Deploy to Server
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          script: |
-            set -e
-            echo "🚀 Начало деплоя парсера..."
-            echo "📅 Время: $(date)"
-            cd /root/auto-parsers
-            echo "🔄 Получение последних изменений из git..."
-            git fetch origin
-            git pull origin main
-            echo "🔍 Проверка изменений в Dockerfile или package.json..."
-            NEED_REBUILD=false
-            if git diff HEAD@{1} HEAD --name-only | grep -qE "(Dockerfile|package\.json|package-lock\.json)"; then
-              echo "📦 Обнаружены изменения в Dockerfile или package.json, требуется пересборка образа"
-              NEED_REBUILD=true
-            fi
-            if [ "$NEED_REBUILD" = true ]; then
-              echo "🔨 Пересборка Docker образа..."
-              docker-compose build parser
-              echo "🔄 Перезапуск контейнера с новым образом..."
-              docker-compose up -d parser
-            else
-              echo "🔄 Перезапуск контейнера парсера (без пересборки)..."
-              docker restart car_parser || docker-compose restart parser
-            fi
-            sleep 3
-            echo "📊 Статус контейнеров:"
-            docker-compose ps
-            echo ""
-            echo "📋 Последние строки логов парсера:"
-            docker logs --tail 20 car_parser || echo "Не удалось получить логи"
-            echo ""
-            echo "✅ Деплой завершен успешно!"
-            echo "📅 Время завершения: $(date)"
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Setup SSH known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy files to server
+        run: |
+          sshpass -p '${{ secrets.SERVER_PASSWORD }}' \
+            rsync -avz --exclude 'node_modules' --exclude '.git' --exclude 'logs' --exclude 'assets' \
+              -e "ssh -o StrictHostKeyChecking=no" \
+              ./ root@${{ secrets.SERVER_HOST }}:/opt/main-parsers/
+
+      - name: Deploy on server
+        run: |
+          sshpass -p '${{ secrets.SERVER_PASSWORD }}' \
+            ssh -o StrictHostKeyChecking=no root@${{ secrets.SERVER_HOST }} << 'EOF'
+              cd /opt/main-parsers
+              docker-compose down || true
+              docker-compose pull || true
+              docker-compose build --no-cache
+              docker-compose up -d
+              docker-compose ps
+              docker system prune -f
+            EOF
