@@ -17,15 +17,34 @@ RUN npx playwright install chromium
 # Создаем пользователя для безопасности
 RUN groupadd -r parser && useradd -r -g parser -m parser
 
+# Устанавливаем su-exec для переключения пользователя
+RUN apt-get update && \
+    apt-get install -y su-exec && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Копируем весь код парсера в контейнер
 COPY . .
 
-# Создаем необходимые директории и устанавливаем права
+# Создаем entrypoint скрипт для установки прав (запускается от root)
+RUN echo '#!/bin/sh\n\
+set -e\n\
+# Создаем директории с правильными правами (от root)\n\
+mkdir -p /app/logs /app/data\n\
+chown -R parser:parser /app/logs /app/data 2>/dev/null || true\n\
+# Переключаемся на пользователя parser и запускаем команду\n\
+exec su-exec parser "$@"' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+# Создаем необходимые директории
 RUN mkdir -p /app/data /app/logs && \
     chown -R parser:parser /app
 
-# Переключаемся на пользователя parser
-USER parser
+# Оставляем root для entrypoint (он переключится на parser через su-exec)
+# USER parser
+
+# Устанавливаем entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Открываем порт (если потребуется)
 EXPOSE 3000
