@@ -38,13 +38,23 @@ jobs:
             mkdir -p /opt/main-parsers
             cd /opt/main-parsers
             
-            # Останавливаем и удаляем старые контейнеры
-            docker-compose down || true
+            # Останавливаем и удаляем старые контейнеры (принудительно)
+            echo "=== Stopping and removing old containers ==="
+            docker-compose down --remove-orphans || true
+            
+            # Удаляем контейнеры по имени, если они все еще существуют
+            docker rm -f car_parser auto_db 2>/dev/null || true
+            
+            # Удаляем старые образы парсера
+            echo "=== Removing old parser images ==="
+            docker images | grep "main-parsers.*parser" | awk "{print \$3}" | xargs -r docker rmi -f || true
             
             # Пересобираем образы
+            echo "=== Building new images ==="
             docker-compose build --no-cache
             
             # Запускаем контейнеры с автоматическим перезапуском
+            echo "=== Starting containers ==="
             docker-compose up -d
             
             # Ждем немного для запуска
