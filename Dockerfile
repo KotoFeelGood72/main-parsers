@@ -1,31 +1,31 @@
 # Используем образ с Playwright
 FROM mcr.microsoft.com/playwright:v1.50.1-jammy
 
-# Создаем пользователя для безопасности
-RUN groupadd -r parser && useradd -r -g parser -m parser
-
 # Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
 # Копируем package.json и package-lock.json перед установкой зависимостей
 COPY package*.json ./
 
-# Устанавливаем зависимости (включая Playwright)
-RUN npm ci --only=production && \
+# Устанавливаем зависимости
+RUN npm install --production --no-audit --no-fund && \
     npm cache clean --force
+
+# Устанавливаем браузеры Playwright (до переключения пользователя)
+RUN npx playwright install chromium
+
+# Создаем пользователя для безопасности
+RUN groupadd -r parser && useradd -r -g parser -m parser
 
 # Копируем весь код парсера в контейнер
 COPY . .
 
-# Создаем необходимые директории
+# Создаем необходимые директории и устанавливаем права
 RUN mkdir -p /app/data /app/logs && \
     chown -R parser:parser /app
 
 # Переключаемся на пользователя parser
 USER parser
-
-# Устанавливаем браузеры Playwright под пользователем parser
-RUN npx playwright install chromium
 
 # Открываем порт (если потребуется)
 EXPOSE 3000
