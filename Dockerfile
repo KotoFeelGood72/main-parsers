@@ -17,23 +17,18 @@ RUN npx playwright install chromium
 # Создаем пользователя для безопасности
 RUN groupadd -r parser && useradd -r -g parser -m parser
 
-# Устанавливаем su-exec для переключения пользователя
-RUN apt-get update && \
-    apt-get install -y su-exec && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 # Копируем весь код парсера в контейнер
 COPY . .
 
 # Создаем entrypoint скрипт для установки прав (запускается от root)
+# Используем встроенный 'su' вместо su-exec
 RUN echo '#!/bin/sh\n\
 set -e\n\
 # Создаем директории с правильными правами (от root)\n\
 mkdir -p /app/logs /app/data\n\
 chown -R parser:parser /app/logs /app/data 2>/dev/null || true\n\
 # Переключаемся на пользователя parser и запускаем команду\n\
-exec su-exec parser "$@"' > /entrypoint.sh && \
+exec su parser -c "$*"' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 # Создаем необходимые директории
