@@ -14,6 +14,9 @@ services:
       - DB_USER=${DB_USER:-root}
       - DB_PASSWORD=${DB_PASSWORD:-P@rs3r_S3cR3t!}
       - DATABASE_URL=${DATABASE_URL:-postgresql://root:P@rs3r_S3cR3t!@db:5432/auto_db}
+      # Настройки Telegram
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-8073958421:AAFrO2GacrRN5Ya0UZMFxxNaQzEgW9h9eo0}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:--4926768746}
     volumes:
       - .:/app
       - /app/node_modules

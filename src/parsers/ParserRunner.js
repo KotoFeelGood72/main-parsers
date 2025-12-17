@@ -102,13 +102,18 @@ function createParserRunner() {
             return;
         }
 
+        const startTime = Date.now();
+        let processedCount = 0;
+        let errorCount = 0;
+        let lastProgressNotification = 0;
+        const PROGRESS_INTERVAL = 20; // Отправляем уведомление каждые 20 объявлений
+        const TIME_INTERVAL = 5 * 60 * 1000; // Или каждые 5 минут
+
         if (telegramService.getStatus().enabled) {
             await telegramService.sendParserStartNotification(parserName, {
                 mode: 'parsing'
             });
         }
-
-        let processedCount = 0;
 
         try {
             for await (const link of parser.getListings()) {
@@ -124,14 +129,39 @@ function createParserRunner() {
                         if (state.memoryCheckCounter % 10 === 0) {
                             logMemoryUsage();
                         }
+
+                        // Отправляем промежуточные уведомления о прогрессе
+                        const now = Date.now();
+                        const shouldNotify = 
+                            (processedCount % PROGRESS_INTERVAL === 0) || 
+                            (now - lastProgressNotification >= TIME_INTERVAL);
+                        
+                        if (telegramService.getStatus().enabled && shouldNotify && processedCount > 0) {
+                            lastProgressNotification = now;
+                            await telegramService.sendParserProgressNotification(parserName, {
+                                processed: processedCount,
+                                errors: errorCount,
+                                startTime: startTime
+                            });
+                        }
                     }
                 } catch (error) {
+                    errorCount++;
                     console.error(`❌ Ошибка обработки: ${error.message}`);
                     await errorHandler.handleParsingError(parserName, error, {
                         url: link,
                         parserName,
                         context: 'listing_processing'
                     });
+                    
+                    // Уведомление о накоплении ошибок (каждые 5 ошибок)
+                    if (telegramService.getStatus().enabled && errorCount > 0 && errorCount % 5 === 0) {
+                        await telegramService.sendMessage(`⚠️ *Накопление ошибок*\n\n` +
+                            `*Парсер:* ${parserName}\n` +
+                            `*Ошибок:* ${errorCount}\n` +
+                            `*Обработано:* ${processedCount}\n` +
+                            `*Время:* ${new Date().toLocaleString('ru-RU')}`);
+                    }
                 }
             }
 
@@ -140,7 +170,8 @@ function createParserRunner() {
             if (telegramService.getStatus().enabled && processedCount > 0) {
                 await telegramService.sendParserSuccessNotification(parserName, {
                     processed: processedCount,
-                    duration: 'completed'
+                    errors: errorCount,
+                    startTime: startTime
                 });
             }
 
@@ -173,16 +204,31 @@ function createParserRunner() {
      */
     async function runCycle(globalConfig = {}, dbManager = null) {
         let cycleCount = 0;
+        let previousParser = null;
 
         while (state.isRunning) {
             cycleCount++;
             console.log(`🔄 Цикл ${cycleCount}`);
 
+            if (telegramService.getStatus().enabled && cycleCount === 1) {
+                await telegramService.sendMessage(`🔄 *Начало цикла ${cycleCount}*\n\n` +
+                    `*Парсеры в очереди:* ${state.parserQueue.join(', ')}\n` +
+                    `*Время:* ${new Date().toLocaleString('ru-RU')}`);
+            }
+
             for (const parserName of state.parserQueue) {
                 if (!state.isRunning) break;
 
+                // Уведомление о смене парсера
+                if (telegramService.getStatus().enabled && previousParser && previousParser !== parserName) {
+                    await telegramService.sendParserSwitchNotification(previousParser, parserName, {
+                        cycleNumber: cycleCount
+                    });
+                }
+
                 try {
                     await runParser(parserName, globalConfig, dbManager);
+                    previousParser = parserName;
                 } catch (error) {
                     console.error(`❌ Ошибка парсера ${parserName}: ${error.message}`);
                     await errorHandler.handleParserError(parserName, error, {
@@ -199,10 +245,27 @@ function createParserRunner() {
 
             if (state.isRunning) {
                 forceGarbageCollection();
+                
+                // Уведомление о завершении цикла
+                if (telegramService.getStatus().enabled) {
+                    const cycleStats = Array.from(state.parserStats.entries())
+                        .map(([name, stats]) => `${name}: ${stats.totalProcessed}`)
+                        .join(', ');
+                    
+                    await telegramService.sendMessage(`✅ *Цикл ${cycleCount} завершен*\n\n` +
+                        `*Статистика:* ${cycleStats || 'нет данных'}\n` +
+                        `*Время:* ${new Date().toLocaleString('ru-RU')}`);
+                }
             }
         }
 
         console.log("✅ Циклический парсинг остановлен");
+        
+        if (telegramService.getStatus().enabled) {
+            await telegramService.sendMessage(`🛑 *Парсинг остановлен*\n\n` +
+                `*Всего циклов:* ${cycleCount}\n` +
+                `*Время:* ${new Date().toLocaleString('ru-RU')}`);
+        }
     }
 
     /**

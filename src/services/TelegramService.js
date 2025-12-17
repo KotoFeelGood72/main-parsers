@@ -21,11 +21,13 @@ function createTelegramService(config = {}) {
         lastMessageTime: 0,
         messageQueue: [],
         isProcessingQueue: false,
-        isEnabled: defaultConfig.botToken && defaultConfig.chatId
+        isEnabled: !!(defaultConfig.botToken && defaultConfig.chatId)
     };
 
     if (!state.isEnabled) {
         console.warn('⚠️ Telegram уведомления отключены: не указаны botToken или chatId');
+    } else {
+        console.log('✅ Telegram уведомления включены');
     }
 
     /**
@@ -141,7 +143,8 @@ function createTelegramService(config = {}) {
         const message = `🚀 Запуск парсера\n\n` +
                       `Парсер: ${parserName}\n` +
                       `Время: ${new Date().toLocaleString('ru-RU')}\n` +
-                      `Режим: ${config.mode || 'cycle'}\n`;
+                      `Режим: ${config.mode || 'cycle'}\n` +
+                      (config.parsers ? `Парсеры: ${config.parsers}\n` : '');
 
         await sendMessage(message);
     }
@@ -150,11 +153,48 @@ function createTelegramService(config = {}) {
      * Отправка уведомления об успешном завершении парсера
      */
     async function sendParserSuccessNotification(parserName, stats = {}) {
-        const message = `✅ Парсер завершен успешно\n\n` +
-                      `Парсер: ${parserName}\n` +
-                      `Обработано: ${stats.processed || 0} объявлений\n` +
-                      `Время выполнения: ${stats.duration || 'неизвестно'}\n` +
-                      `Время завершения: ${new Date().toLocaleString('ru-RU')}\n`;
+        const duration = stats.duration || (stats.startTime ? Math.round((Date.now() - stats.startTime) / 1000 / 60) + ' мин' : 'неизвестно');
+        const message = `✅ *Парсер завершен*\n\n` +
+                      `*Парсер:* ${parserName}\n` +
+                      `*Обработано:* ${stats.processed || 0} объявлений\n` +
+                      `*Ошибок:* ${stats.errors || 0}\n` +
+                      `*Время работы:* ${duration}\n` +
+                      `*Завершено:* ${new Date().toLocaleString('ru-RU')}`;
+
+        await sendMessage(message);
+    }
+
+    /**
+     * Отправка уведомления о прогрессе парсинга
+     */
+    async function sendParserProgressNotification(parserName, stats = {}) {
+        const processed = stats.processed || 0;
+        const errors = stats.errors || 0;
+        const startTime = stats.startTime || Date.now();
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        const elapsedMinutes = Math.round(elapsed / 60);
+        const speed = elapsed > 0 ? (processed / elapsed * 60).toFixed(1) : 0;
+        
+        const message = `📊 *Прогресс парсинга*\n\n` +
+                      `*Парсер:* ${parserName}\n` +
+                      `*Обработано:* ${processed} объявлений\n` +
+                      `*Ошибок:* ${errors}\n` +
+                      `*Время работы:* ${elapsedMinutes} мин\n` +
+                      `*Скорость:* ~${speed} объяв/мин\n` +
+                      `*Время:* ${new Date().toLocaleString('ru-RU')}`;
+
+        await sendMessage(message);
+    }
+
+    /**
+     * Отправка уведомления о смене парсера
+     */
+    async function sendParserSwitchNotification(fromParser, toParser, cycleInfo = {}) {
+        const message = `🔄 *Смена парсера*\n\n` +
+                      `*С:* ${fromParser || 'начало'}\n` +
+                      `*На:* ${toParser}\n` +
+                      (cycleInfo.cycleNumber ? `*Цикл:* ${cycleInfo.cycleNumber}\n` : '') +
+                      `*Время:* ${new Date().toLocaleString('ru-RU')}`;
 
         await sendMessage(message);
     }
@@ -258,6 +298,8 @@ function createTelegramService(config = {}) {
         sendMessage,
         sendParserStartNotification,
         sendParserSuccessNotification,
+        sendParserProgressNotification,
+        sendParserSwitchNotification,
         sendCriticalErrorNotification,
         sendDailyReport,
         sendSystemStatusNotification,
