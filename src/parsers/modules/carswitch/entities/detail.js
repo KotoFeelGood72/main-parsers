@@ -212,7 +212,7 @@ class CarswitchDetailParser {
             console.log("🔍 Извлеченный заголовок:", title);
 
             // Извлекаем год - ищем span после изображения с alt="Year"
-            const yearText = await page.evaluate((yearAttrs, selectors) => {
+            const yearText = await page.evaluate(({ yearAttrs, selectors }) => {
                 const yearImg = Array.from(document.querySelectorAll(selectors.allImages)).find(img => 
                     yearAttrs.includes(img.getAttribute('alt'))
                 );
@@ -221,11 +221,11 @@ class CarswitchDetailParser {
                     return nextSpan?.textContent?.trim() || null;
                 }
                 return null;
-            }, this.imageAttributes.year, this.selectors) 
+            }, { yearAttrs: this.imageAttributes.year, selectors: this.selectors }) 
             const year = yearText ? yearText.replace(/\D/g, "") : null;
 
             // Извлекаем пробег - ищем span после изображения с alt="Mileage"
-            const kmText = await page.evaluate((mileageAttrs, selectors) => {
+            const kmText = await page.evaluate(({ mileageAttrs, selectors }) => {
                 const mileageImg = Array.from(document.querySelectorAll(selectors.allImages)).find(img => 
                     mileageAttrs.includes(img.getAttribute('alt'))
                 );
@@ -234,7 +234,7 @@ class CarswitchDetailParser {
                     return nextSpan?.textContent?.trim() || null;
                 }
                 return null;
-            }, this.imageAttributes.mileage, this.selectors) 
+            }, { mileageAttrs: this.imageAttributes.mileage, selectors: this.selectors }) 
             const kilometers = kmText || "0";
 
             // Извлекаем цену
@@ -245,7 +245,7 @@ class CarswitchDetailParser {
                 null;
 
             // Получаем фотографии - ищем изображения с alt, начинающимся с "Car image"
-            const photos = await page.evaluate((carImageAttr, selectors) => {
+            const photos = await page.evaluate(({ carImageAttr, selectors }) => {
                 const carImages = Array.from(document.querySelectorAll(selectors.allImages)).filter(img => 
                     img.getAttribute('alt') && img.getAttribute('alt').startsWith(carImageAttr)
                 );
@@ -258,10 +258,10 @@ class CarswitchDetailParser {
                             .filter(src => src && (src.includes("carswitch.com") || src.includes("cloudfront.net")))
                     )
                 );
-            }, this.imageAttributes.carImage, this.selectors) || [];
+            }, { carImageAttr: this.imageAttributes.carImage, selectors: this.selectors }) || [];
 
             // Извлекаем локацию - ищем span после изображения с alt="Location"
-            const location = await page.evaluate((locationAttrs, selectors) => {
+            const location = await page.evaluate(({ locationAttrs, selectors }) => {
                 const locationImg = Array.from(document.querySelectorAll(selectors.allImages)).find(img => 
                     locationAttrs.includes(img.getAttribute('alt'))
                 );
@@ -270,7 +270,7 @@ class CarswitchDetailParser {
                     return nextSpan?.textContent?.trim() || null;
                 }
                 return null;
-            }, this.imageAttributes.location, this.selectors) || "Не указано";
+            }, { locationAttrs: this.imageAttributes.location, selectors: this.selectors }) || "Не указано";
 
             // Данные о продавце (пока используем значения по умолчанию, так как структура изменилась)
             const sellerName = "CarSwitch";

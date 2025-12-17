@@ -7,13 +7,13 @@ services:
     environment:
       - NODE_ENV=production
       - DOCKER=true
-      # Настройки подключения к внешней БД (задаются через .env или переменные окружения)
-      - DB_HOST=${DB_HOST}
+      # Настройки подключения к внешней БД (можно переопределить через .env)
+      - DB_HOST=${DB_HOST:-db}
       - DB_PORT=${DB_PORT:-5432}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DATABASE_URL=${DATABASE_URL}
+      - DB_NAME=${DB_NAME:-auto_db}
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-P@rs3r_S3cR3t!}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://root:P@rs3r_S3cR3t!@db:5432/auto_db}
     volumes:
       - .:/app
       - /app/node_modules

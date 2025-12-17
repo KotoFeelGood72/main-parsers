@@ -25,8 +25,7 @@ class AutotradersListingParser {
             listings: '.row.cars-cont',
             pagination: '.pagination, .pager, .page-navigation'
         };
-    }
-
+        
         // Статистика для логирования
         this.stats = {
             totalPages: 0,
