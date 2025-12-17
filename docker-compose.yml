@@ -1,0 +1,46 @@
+
+
+services:
+  db:
+    image: postgres:15
+    container_name: auto_db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=P@rs3r_S3cR3t!
+      - POSTGRES_DB=auto_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - network
+
+  parser:
+    build: .
+    container_name: car_parser
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - NODE_ENV=production
+      - DOCKER=true
+      - DATABASE_URL=postgresql://root:P@rs3r_S3cR3t!@db:5432/auto_db
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=auto_db
+      - DB_USER=root
+      - DB_PASSWORD=P@rs3r_S3cR3t!
+    networks:
+      - network
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["npm", "start"]
+
+networks:
+  network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: postgres_data

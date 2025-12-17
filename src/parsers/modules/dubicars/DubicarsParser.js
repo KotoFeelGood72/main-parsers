@@ -1,0 +1,112 @@
+const { createBaseParser } = require('../../BaseParser');
+const { saveData } = require('../../../utils/saveData');
+const { DubicarsListingParser } = require('./entities/listing');
+const { DubicarsDetailParser } = require('./entities/detail');
+const { delay } = require('../../utils/parserHelpers');
+
+/**
+ * Создание парсера Dubicars (функциональный стиль)
+ */
+function createDubicarsParser(config) {
+    const parserConfig = {
+        baseUrl: 'https://www.dubicars.com',
+        listingsUrl: 'https://www.dubicars.com/dubai/used?page={page}',
+        ...config
+    };
+
+    const baseParser = createBaseParser('Dubicars', parserConfig);
+    const listingParser = new DubicarsListingParser(parserConfig);
+    const detailParser = new DubicarsDetailParser(parserConfig);
+
+    /**
+     * Получение списка объявлений
+     */
+    async function* getListings() {
+        if (!baseParser.context) {
+            throw new Error('Parser not initialized. Call initialize() first.');
+        }
+        yield* listingParser.getListings(baseParser.context);
+    }
+
+    /**
+     * Парсинг детальной информации об объявлении
+     */
+    async function parseListing(url) {
+        if (!baseParser.context) {
+            throw new Error('Parser not initialized. Call initialize() first.');
+        }
+        return await detailParser.parseCarDetails(url, baseParser.context);
+    }
+
+    /**
+     * Сохранение данных в базу
+     */
+    async function saveCarData(carDetails) {
+        try {
+            await saveData(carDetails);
+        } catch (error) {
+            console.error(`❌ Ошибка сохранения данных:`, error.message);
+        }
+    }
+
+    /**
+     * Валидация данных для Dubicars
+     */
+    function validateData(data) {
+        return baseParser.validateData(data) && 
+               data.title && 
+               data.title !== "Неизвестно" &&
+               data.price && 
+               data.price.raw > 0;
+    }
+
+    /**
+     * Запуск полного цикла парсинга
+     */
+    async function run() {
+        const results = [];
+        
+        try {
+            console.log(`🚀 Запуск парсера ${baseParser.name}...`);
+            
+            for await (const listingUrl of getListings()) {
+                console.log(`🚗 Обрабатываем ${listingUrl}`);
+                
+                const data = await parseListing(listingUrl);
+                if (data && validateData(data)) {
+                    results.push(data);
+                    
+                    await saveCarData(data);
+                    
+                    console.log(`✅ Обработано объявление: ${data.title}`);
+                } else {
+                    console.log(`⚠️ Пропущено объявление (невалидные данные): ${listingUrl}`);
+                }
+                
+                const delayTime = Math.max(100, parserConfig.delayBetweenRequests || 100);
+                await delay(delayTime);
+            }
+            
+            console.log(`✅ Парсер ${baseParser.name} завершен. Обработано: ${results.length} объявлений`);
+            return results;
+            
+        } catch (error) {
+            console.error(`❌ Ошибка в парсере ${baseParser.name}:`, error.message);
+            throw error;
+        }
+    }
+
+    return {
+        get name() { return baseParser.name; },
+        get config() { return parserConfig; },
+        get context() { return baseParser.context; },
+        initialize: baseParser.initialize,
+        getListings,
+        parseListing,
+        validateData,
+        run,
+        cleanup: baseParser.cleanup
+    };
+}
+
+module.exports = { createDubicarsParser, DubicarsParser: createDubicarsParser };
