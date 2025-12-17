@@ -35,11 +35,37 @@ jobs:
         run: |
           sshpass -p '${{ secrets.SERVER_PASSWORD }}' \
             ssh -o StrictHostKeyChecking=no root@${{ secrets.SERVER_HOST }} << 'EOF'
+              set -e
+              mkdir -p /opt/main-parsers
               cd /opt/main-parsers
+              
+              # Останавливаем и удаляем старые контейнеры
               docker-compose down || true
-              docker-compose pull || true
+              
+              # Пересобираем образы
               docker-compose build --no-cache
+              
+              # Запускаем контейнеры с автоматическим перезапуском
               docker-compose up -d
+              
+              # Ждем немного для запуска
+              sleep 5
+              
+              # Проверяем статус контейнеров
+              echo "=== Container Status ==="
               docker-compose ps
+              
+              # Проверяем логи парсера
+              echo "=== Parser Logs (last 20 lines) ==="
+              docker-compose logs --tail=20 parser || true
+              
+              # Очищаем неиспользуемые образы
               docker system prune -f
+              
+              # Проверяем, что контейнеры запущены
+              if ! docker-compose ps | grep -q "Up"; then
+                echo "ERROR: Some containers are not running!"
+                docker-compose ps
+                exit 1
+              fi
             EOF

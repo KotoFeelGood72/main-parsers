@@ -4,6 +4,7 @@ services:
   db:
     image: postgres:15
     container_name: auto_db
+    restart: always
     ports:
       - "5432:5432"
     environment:
