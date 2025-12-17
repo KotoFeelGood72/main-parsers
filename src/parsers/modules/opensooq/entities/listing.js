@@ -217,7 +217,7 @@ function createOpenSooqListingParser(config) {
                         // Ищем все элементы с классом postListItemData на странице
                         console.log(`🔍 Ищем все элементы с классом postListItemData...`);
                         
-                        const searchResult = await paginationPage.evaluate((baseUrl, selectors) => {
+                        const searchResult = await paginationPage.evaluate(({ baseUrl, selectors }) => {
                             // Ищем все ссылки с классом postListItemData или атрибутом data-id1
                             const links = Array.from(document.querySelectorAll(selectors.postListItemDataAll));
                             
@@ -289,7 +289,7 @@ function createOpenSooqListingParser(config) {
                                 links: result,
                                 debug: debugInfo
                             };
-                        }, parserConfig.baseUrl);
+                        }, { baseUrl: parserConfig.baseUrl, selectors });
                         
                         // Логируем отладочную информацию
                         if (searchResult.debug) {
@@ -322,7 +322,7 @@ function createOpenSooqListingParser(config) {
                         } else {
                             // Альтернативный метод: ищем все ссылки с /en/search/ в href
                             console.log(`🔍 Альтернативный поиск: ищем все ссылки с /en/search/...`);
-                            carLinks = await paginationPage.evaluate((baseUrl, selectors) => {
+                            carLinks = await paginationPage.evaluate(({ baseUrl, selectors }) => {
                                 // Ищем все ссылки, содержащие /en/search/ в href
                                 const allLinks = Array.from(document.querySelectorAll(selectors.linksWithSearch));
                                 
@@ -339,7 +339,7 @@ function createOpenSooqListingParser(config) {
                                         return baseUrl + '/' + href;
                                     })
                                     .filter(href => href !== null);
-                            }, parserConfig.baseUrl, selectors);
+                            }, { baseUrl: parserConfig.baseUrl, selectors });
                             
                             carLinks = [...new Set(carLinks)];
                             

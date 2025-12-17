@@ -324,11 +324,11 @@ function createSharraiDetailParser(config) {
             return carDetails;
 
         } catch (error) {
+            errorCount++;
             console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
-            this.errorCount++;
             
-            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
-                await this.sendErrorNotification(url, error);
+            if (telegramService.getStatus().enabled && errorCount % 10 === 0) {
+                await sendErrorNotification(url, error);
             }
             
             return null;
@@ -344,7 +344,7 @@ function createSharraiDetailParser(config) {
     /**
      * Отправка уведомления об ошибке в Telegram
      */
-    async sendErrorNotification(url, error) {
+    async function sendErrorNotification(url, error) {
         if (!telegramService.getStatus().enabled) return;
 
         try {
@@ -362,7 +362,7 @@ function createSharraiDetailParser(config) {
     /**
      * Безопасное выполнение функции на элементе
      */
-    async safeEval(page, selector, fn, defaultValue = null) {
+    async function safeEval(page, selector, fn, defaultValue = null) {
         try {
             const element = await page.$(selector);
             if (!element) {
@@ -374,6 +374,13 @@ function createSharraiDetailParser(config) {
             return defaultValue;
         }
     }
+
+    // Возвращаем объект с методами
+    return {
+        parseCarDetails,
+        sendErrorNotification,
+        safeEval
+    };
 }
 
 module.exports = { createSharraiDetailParser };

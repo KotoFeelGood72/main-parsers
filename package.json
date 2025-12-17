@@ -5,7 +5,9 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node --expose-gc --max-old-space-size=512 src/index.js cycle",
-    "single": "node --expose-gc --max-old-space-size=512 src/index.js single"
+    "single": "node --expose-gc --max-old-space-size=512 src/index.js single",
+    "test-modules": "node --expose-gc --max-old-space-size=512 test-modules.js",
+    "test-one-page": "node --expose-gc --max-old-space-size=512 test-one-page.js"
   },
   "license": "ISC",
   "dependencies": {
