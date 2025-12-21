@@ -12,7 +12,7 @@ async function startBrowser(options = {}) {
     const stealthArgs = getStealthArgs();
     
     const browser = await chromium.launch({ 
-        headless: false,
+        headless: true,
         // headless: isHeadless,
         args: stealthArgs,
         ...options
