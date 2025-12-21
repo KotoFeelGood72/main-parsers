@@ -170,7 +170,8 @@ async function* paginatePages(context, config) {
         maxPages = 1000,
         maxEmptyPages = 3,
         onPageLoad = null,
-        onPageContent = null
+        onPageContent = null,
+        waitUntil = 'load' // По умолчанию используем 'load' вместо 'networkidle' для надежности в headless режиме
     } = config;
 
     let currentPage = 1;
@@ -195,14 +196,18 @@ async function* paginatePages(context, config) {
             try {
                 // Загружаем страницу
                 console.log(`🌐 Загружаем страницу ${currentPage}: ${url}`);
+                
+                // Используем 'load' по умолчанию вместо 'networkidle' для надежности в headless режиме
+                // 'networkidle' может никогда не наступить из-за постоянных фоновых запросов
                 await page.goto(url, {
-                    waitUntil: 'networkidle', // Ждем завершения сетевых запросов для динамического контента
+                    waitUntil: waitUntil,
                     timeout: 60000 // Увеличиваем таймаут до 60 секунд
                 });
-                console.log(`✅ Страница ${currentPage} загружена`);
+                console.log(`✅ Страница ${currentPage} загружена (waitUntil: ${waitUntil})`);
                 
                 // Дополнительное ожидание для полной загрузки динамического контента
-                await page.waitForTimeout(2000);
+                // Увеличиваем время ожидания для headless режима
+                await page.waitForTimeout(waitUntil === 'load' ? 5000 : 2000);
 
                 // Вызываем callback при загрузке страницы
                 if (onPageLoad) {

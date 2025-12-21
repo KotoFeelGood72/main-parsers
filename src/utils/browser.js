@@ -3,14 +3,17 @@ const { getStealthArgs, getRealisticUserAgent, getRealisticHeaders } = require('
 
 async function startBrowser(options = {}) {
     // Определяем режим: headless в Docker, обычный режим локально
-    const isHeadless = process.env.NODE_ENV === 'production' || process.env.DOCKER === 'true';
+    // Но позволяем переопределить через options
+    // const isHeadless = options.headless !== undefined 
+    //     ? options.headless 
+    //     : (process.env.NODE_ENV === 'production' || process.env.DOCKER === 'true');
     
     // Используем улучшенные stealth аргументы
     const stealthArgs = getStealthArgs();
     
     const browser = await chromium.launch({ 
         headless: true,
-        // headless: options.headless !== undefined ? options.headless : false,
+        // headless: isHeadless,
         args: stealthArgs,
         ...options
     });
