@@ -86,7 +86,20 @@ function createLoggerService(config = {}) {
      * Отправка уведомления в Telegram
      */
     async function sendTelegramNotification(component, error, context, count = 1, type = 'parser') {
-        if (!state.telegramService) return;
+        if (!state.telegramService) {
+            logger.debug('TelegramService не подключен к LoggerService');
+            return;
+        }
+
+        // Проверяем, включен ли TelegramService
+        const telegramStatus = state.telegramService.getStatus();
+        if (!telegramStatus || !telegramStatus.enabled) {
+            logger.debug('TelegramService не включен', {
+                status: telegramStatus,
+                enableTelegram: state.config.enableTelegram
+            });
+            return;
+        }
 
         try {
             const emoji = type === 'parser' ? '🚨' : '⚠️';
@@ -111,11 +124,18 @@ function createLoggerService(config = {}) {
                 message += `\n*Стек:*\n\`\`\`\n${stackLines.join('\n')}\`\`\``;
             }
 
-            await state.telegramService.sendMessage(message);
+            const result = await state.telegramService.sendMessage(message);
+            if (!result) {
+                logger.warn('Не удалось отправить сообщение в Telegram', {
+                    component,
+                    errorMessage: error.message
+                });
+            }
         } catch (telegramError) {
             logger.error('Failed to send Telegram notification', {
                 originalError: error.message,
-                telegramError: telegramError.message
+                telegramError: telegramError.message,
+                stack: telegramError.stack
             });
         }
     }
@@ -145,7 +165,10 @@ function createLoggerService(config = {}) {
         logger.error(`Parser Error [${parserName}]: ${error.message}`, errorData);
 
         if (state.config.enableTelegram && state.telegramService) {
-            await sendTelegramNotification(parserName, error, context, errorData.count);
+            const telegramStatus = state.telegramService.getStatus();
+            if (telegramStatus && telegramStatus.enabled) {
+                await sendTelegramNotification(parserName, error, context, errorData.count);
+            }
         }
     }
 
@@ -167,7 +190,10 @@ function createLoggerService(config = {}) {
         logger.error(`System Error [${component}]: ${error.message}`, errorData);
 
         if (state.config.enableTelegram && state.telegramService) {
-            await sendTelegramNotification(component, error, context, 1, 'system');
+            const telegramStatus = state.telegramService.getStatus();
+            if (telegramStatus && telegramStatus.enabled) {
+                await sendTelegramNotification(component, error, context, 1, 'system');
+            }
         }
     }
 
@@ -202,6 +228,16 @@ function createLoggerService(config = {}) {
     function setTelegramService(telegramService) {
         state.telegramService = telegramService;
         state.config.enableTelegram = true;
+        
+        // Проверяем статус TelegramService
+        if (telegramService) {
+            const status = telegramService.getStatus();
+            if (status && status.enabled) {
+                logger.info('Telegram уведомления включены для LoggerService');
+            } else {
+                logger.warn('Telegram сервис подключен, но не включен (отсутствует токен или chatId)');
+            }
+        }
     }
 
     /**

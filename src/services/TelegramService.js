@@ -1,5 +1,14 @@
 const axios = require('axios');
 
+// Загружаем переменные окружения, если они еще не загружены
+if (!process.env.TELEGRAM_BOT_TOKEN && !process.env.TELEGRAM_CHAT_ID) {
+    try {
+        require('dotenv').config();
+    } catch (e) {
+        // dotenv может быть уже загружен
+    }
+}
+
 /**
  * Создание сервиса Telegram (функциональный стиль)
  */
@@ -26,8 +35,12 @@ function createTelegramService(config = {}) {
 
     if (!state.isEnabled) {
         console.warn('⚠️ Telegram уведомления отключены: не указаны botToken или chatId');
+        console.warn(`   botToken: ${defaultConfig.botToken ? 'установлен' : 'не установлен'}`);
+        console.warn(`   chatId: ${defaultConfig.chatId ? 'установлен' : 'не установлен'}`);
     } else {
         console.log('✅ Telegram уведомления включены');
+        console.log(`   botToken: ${defaultConfig.botToken.substring(0, 10)}...`);
+        console.log(`   chatId: ${defaultConfig.chatId}`);
     }
 
     /**
@@ -69,13 +82,29 @@ function createTelegramService(config = {}) {
             } catch (error) {
                 lastError = error;
                 
+                // Логируем подробности ошибки
+                if (error.response) {
+                    console.error(`Telegram API ошибка (попытка ${attempt}/${state.config.retryAttempts}):`, {
+                        status: error.response.status,
+                        statusText: error.response.statusText,
+                        data: error.response.data,
+                        description: error.response.data?.description || 'нет описания'
+                    });
+                } else {
+                    console.error(`Ошибка отправки в Telegram (попытка ${attempt}/${state.config.retryAttempts}):`, error.message);
+                }
+                
                 if (attempt < state.config.retryAttempts) {
                     await delay(state.config.retryDelay * attempt);
                 }
             }
         }
 
-        console.error('Не удалось отправить сообщение в Telegram:', lastError.message);
+        const errorMessage = lastError?.response?.data?.description || lastError?.message || 'Неизвестная ошибка';
+        console.error('Не удалось отправить сообщение в Telegram после всех попыток:', errorMessage);
+        if (lastError?.response?.status === 401) {
+            console.error('⚠️ Ошибка 401: Проверьте правильность TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID');
+        }
         return false;
     }
 
@@ -103,7 +132,19 @@ function createTelegramService(config = {}) {
                 state.lastMessageTime = Date.now();
 
             } catch (error) {
-                console.error('Ошибка отправки сообщения в Telegram:', error.message);
+                if (error.response) {
+                    console.error('Ошибка отправки сообщения в Telegram:', {
+                        status: error.response.status,
+                        statusText: error.response.statusText,
+                        description: error.response.data?.description || 'нет описания',
+                        data: error.response.data
+                    });
+                    if (error.response.status === 401) {
+                        console.error('⚠️ Ошибка 401: Токен недействителен. Проверьте TELEGRAM_BOT_TOKEN в .env файле');
+                    }
+                } else {
+                    console.error('Ошибка отправки сообщения в Telegram:', error.message);
+                }
                 resolve(false);
             }
         }
@@ -116,11 +157,18 @@ function createTelegramService(config = {}) {
      */
     async function sendMessage(message, options = {}) {
         if (!state.isEnabled || !state.config.enableNotifications) {
+            console.warn('TelegramService: попытка отправить сообщение, но сервис не включен', {
+                isEnabled: state.isEnabled,
+                enableNotifications: state.config.enableNotifications,
+                botToken: state.config.botToken ? 'установлен' : 'не установлен',
+                chatId: state.config.chatId ? 'установлен' : 'не установлен'
+            });
             return false;
         }
 
         const messageOptions = {
             disable_web_page_preview: true,
+            parse_mode: 'Markdown',
             ...options
         };
 
@@ -285,13 +333,55 @@ function createTelegramService(config = {}) {
      * Проверка статуса сервиса
      */
     function getStatus() {
+        // Перепроверяем статус на случай, если переменные окружения были загружены позже
+        const botToken = process.env.TELEGRAM_BOT_TOKEN || state.config.botToken || '';
+        const chatId = process.env.TELEGRAM_CHAT_ID || state.config.chatId || '';
+        const isEnabledNow = !!(botToken && chatId);
+        
+        // Обновляем статус, если он изменился
+        if (isEnabledNow !== state.isEnabled) {
+            state.isEnabled = isEnabledNow;
+            state.config.botToken = botToken;
+            state.config.chatId = chatId;
+            if (isEnabledNow) {
+                console.log('✅ Telegram уведомления теперь включены');
+            }
+        }
+        
         return {
             enabled: state.isEnabled,
             notificationsEnabled: state.config.enableNotifications,
             queueLength: state.messageQueue.length,
             isProcessingQueue: state.isProcessingQueue,
-            lastMessageTime: state.lastMessageTime
+            lastMessageTime: state.lastMessageTime,
+            botToken: state.config.botToken ? 'установлен' : 'не установлен',
+            chatId: state.config.chatId ? 'установлен' : 'не установлен'
         };
+    }
+    
+    /**
+     * Переинициализация сервиса (для обновления переменных окружения)
+     */
+    function reinitialize() {
+        // Перезагружаем переменные окружения
+        try {
+            require('dotenv').config();
+        } catch (e) {
+            // dotenv может быть уже загружен
+        }
+        
+        const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
+        const chatId = process.env.TELEGRAM_CHAT_ID || '';
+        
+        state.config.botToken = botToken;
+        state.config.chatId = chatId;
+        state.isEnabled = !!(botToken && chatId);
+        
+        if (state.isEnabled) {
+            console.log('✅ Telegram уведомления переинициализированы и включены');
+        } else {
+            console.warn('⚠️ Telegram уведомления переинициализированы, но остаются отключенными');
+        }
     }
 
     return {
@@ -306,7 +396,8 @@ function createTelegramService(config = {}) {
         sendModuleChangeNotification,
         testConnection,
         setNotificationsEnabled,
-        getStatus
+        getStatus,
+        reinitialize
     };
 }
 
