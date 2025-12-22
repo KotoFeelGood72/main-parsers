@@ -4,6 +4,7 @@ const { databaseManager } = require('../database/database');
 const { parserModuleManager } = require('./ModuleManager');
 const { errorHandler } = require('../services/ErrorHandler');
 const { telegramService } = require('../services/TelegramService');
+const { loggerService } = require('../services/LoggerService');
 
 /**
  * Создание раннера парсеров (функциональный стиль)
@@ -92,7 +93,9 @@ function createParserRunner() {
         state.currentParser = parser;
 
         try {
+            loggerService.logInfo(`Инициализация парсера: ${parserName}`, { parserName, context: 'parser_initialization' });
             await parser.initialize(state.context, dbManager);
+            loggerService.logInfo(`Парсер инициализирован: ${parserName}`, { parserName, context: 'parser_initialization' });
         } catch (error) {
             console.error(`❌ Ошибка инициализации парсера ${parserName}:`, error);
             await errorHandler.handleParserError(parserName, error, {
@@ -124,6 +127,12 @@ function createParserRunner() {
                     if (rawData) {
                         try {
                             await saveData(rawData);
+                            loggerService.logInfo(`Объявление обработано: ${link}`, {
+                                parserName,
+                                url: link,
+                                title: rawData.title || 'Unknown',
+                                context: 'listing_processing'
+                            });
                         } catch (saveError) {
                             // Ошибки сохранения в БД не должны прерывать работу парсера
                             // Они уже обработаны в saveData.js
@@ -172,6 +181,14 @@ function createParserRunner() {
             }
 
             updateParserStats(parserName, processedCount);
+
+            const duration = Math.round((Date.now() - startTime) / 1000);
+            loggerService.logSuccess(parserName, {
+                processed: processedCount,
+                errors: errorCount,
+                duration: `${duration} сек`,
+                startTime: new Date(startTime).toISOString()
+            });
 
             if (telegramService.getStatus().enabled && processedCount > 0) {
                 await telegramService.sendParserSuccessNotification(parserName, {
