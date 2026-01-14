@@ -1,4 +1,5 @@
 const pool = require("../db");
+const { colorDetectionService } = require("../services/ColorDetectionService");
 
 /**
  * Извлекает число из строки километров
@@ -17,6 +18,42 @@ function extractKilometers(kmString) {
     }
     
     return cleaned;
+}
+
+/**
+ * Определяет цвет автомобиля по фотографии, если цвет не указан
+ */
+async function detectColorIfNeeded(carDetails) {
+    // Если цвет уже указан и не "Неизвестно", не определяем
+    if (carDetails.exterior_color && 
+        carDetails.exterior_color !== 'Неизвестно' && 
+        carDetails.exterior_color.trim() !== '') {
+        return carDetails.exterior_color;
+    }
+
+    // Пытаемся определить цвет по фотографиям
+    const images = [];
+    if (carDetails.main_image) {
+        images.push(carDetails.main_image);
+    }
+    if (carDetails.photos && Array.isArray(carDetails.photos)) {
+        images.push(...carDetails.photos);
+    }
+
+    if (images.length > 0) {
+        try {
+            console.log(`🎨 Определение цвета автомобиля по фотографии...`);
+            const detectedColor = await colorDetectionService.detectColorFromImages(images);
+            if (detectedColor && detectedColor !== 'Неизвестно') {
+                console.log(`✅ Определен цвет: ${detectedColor}`);
+                return detectedColor;
+            }
+        } catch (error) {
+            console.warn(`⚠️ Ошибка при определении цвета: ${error.message}`);
+        }
+    }
+
+    return carDetails.exterior_color || 'Неизвестно';
 }
 
 async function saveData(carDetails) {
@@ -78,6 +115,9 @@ async function saveData(carDetails) {
             RETURNING id;
         `;
 
+        // Определяем цвет, если он не указан
+        const exteriorColor = await detectColorIfNeeded(carDetails);
+
         const values = [
             carDetails.short_url || null,
             carDetails.title || "Неизвестно",
@@ -92,7 +132,7 @@ async function saveData(carDetails) {
             carDetails.price_formatted || carDetails.price?.formatted || "0",
             carDetails.price_raw || carDetails.price?.raw || 0,
             carDetails.currency || carDetails.price?.currency || "Неизвестно",
-            carDetails.exterior_color || "Неизвестно",
+            exteriorColor,
             carDetails.location || "Неизвестно",
             carDetails.phone || carDetails.contact?.phone || "Не указан",
             carDetails.seller_name || carDetails.sellers?.sellerName || "Неизвестен",

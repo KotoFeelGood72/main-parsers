@@ -7,7 +7,7 @@ WORKDIR /app
 # Копируем package.json и package-lock.json перед установкой зависимостей
 COPY package*.json ./
 
-# Устанавливаем зависимости
+# Устанавливаем зависимости (включая sharp для определения цвета)
 RUN npm install --production --no-audit --no-fund && \
     npm cache clean --force
 
