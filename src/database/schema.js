@@ -29,6 +29,7 @@ const createCarListingsTable = `
         seller_logo TEXT,
         seller_profile_link TEXT,
         main_image TEXT,
+        status TEXT DEFAULT 'Активно',
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     );
@@ -73,6 +74,7 @@ const createIndexes = [
     `CREATE INDEX IF NOT EXISTS idx_car_listings_year ON car_listings(year);`,
     `CREATE INDEX IF NOT EXISTS idx_car_listings_price_raw ON car_listings(price_raw);`,
     `CREATE INDEX IF NOT EXISTS idx_car_listings_created_at ON car_listings(created_at);`,
+    `CREATE INDEX IF NOT EXISTS idx_car_listings_status ON car_listings(status);`,
     `CREATE INDEX IF NOT EXISTS idx_car_photos_listing_id ON car_photos(listing_id);`,
     `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
     `CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`

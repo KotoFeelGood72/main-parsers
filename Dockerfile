@@ -48,5 +48,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
     CMD node -e "process.exit(0)"
 
-# Запускаем парсер
-CMD ["node", "--expose-gc", "--max-old-space-size=512", "src/index.js", "cycle"]
+# Запускаем парсер и сервис актуализации статусов
+CMD ["node", "--expose-gc", "--max-old-space-size=512", "src/start-all.js"]

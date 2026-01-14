@@ -7,7 +7,8 @@
     "start": "node --expose-gc --max-old-space-size=512 src/index.js cycle",
     "single": "node --expose-gc --max-old-space-size=512 src/index.js single",
     "test-modules": "node --expose-gc --max-old-space-size=512 test-modules.js",
-    "test-one-page": "node --expose-gc --max-old-space-size=512 test-one-page.js"
+    "test-one-page": "node --expose-gc --max-old-space-size=512 test-one-page.js",
+    "status-update": "node --expose-gc --max-old-space-size=512 src/status-updater.js"
   },
   "license": "ISC",
   "dependencies": {
