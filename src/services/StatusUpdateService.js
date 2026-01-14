@@ -428,12 +428,14 @@ function createStatusUpdateService(config = {}) {
     /**
      * Запуск процесса актуализации статусов
      */
-    async function start(batchSize = null, sendStartMsg = true) {
-        if (state.isRunning) {
+    async function start(batchSize = null, sendStartMsg = true, skipRunningCheck = false) {
+        if (!skipRunningCheck && state.isRunning) {
             loggerService.logWarning('StatusUpdateService уже запущен');
             return;
         }
 
+        // Временно устанавливаем флаг, чтобы предотвратить параллельные запуски
+        const wasRunning = state.isRunning;
         state.isRunning = true;
         const actualBatchSize = batchSize || state.config.batchSize;
 
@@ -525,7 +527,10 @@ function createStatusUpdateService(config = {}) {
             throw error;
         } finally {
             await closeBrowser();
-            state.isRunning = false;
+            // Сбрасываем флаг только если это был одиночный запуск, не циклический
+            if (!skipRunningCheck) {
+                state.isRunning = false;
+            }
         }
     }
 
@@ -555,8 +560,8 @@ function createStatusUpdateService(config = {}) {
         // Отправляем уведомление о запуске
         await sendStartNotification('cycle');
 
-        // Запускаем первый цикл сразу (без повторного уведомления о запуске)
-        await start(null, false);
+        // Запускаем первый цикл сразу (без повторного уведомления о запуске и проверки isRunning)
+        await start(null, false, true);
 
         // Затем запускаем циклически
         const cycle = async () => {
@@ -582,7 +587,7 @@ function createStatusUpdateService(config = {}) {
                 });
 
                 if (state.isRunning) {
-                    await start();
+                    await start(null, false, true);
                     // Планируем следующий цикл
                     cycle();
                 }
@@ -593,7 +598,11 @@ function createStatusUpdateService(config = {}) {
                 
                 // При ошибке ждем и пробуем снова
                 if (state.isRunning) {
-                    setTimeout(cycle, intervalMs);
+                    setTimeout(() => {
+                        if (state.isRunning) {
+                            cycle();
+                        }
+                    }, intervalMs);
                 }
             }
         };

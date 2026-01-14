@@ -40,7 +40,8 @@ const config = {
     longSellingDays: parseInt(process.env.STATUS_UPDATE_LONG_SELLING_DAYS) || 30
 };
 
-// Создаем экземпляр сервиса с конфигурацией
+// Используем глобальный экземпляр, но обновляем его конфигурацию
+// Создаем новый экземпляр с конфигурацией, так как глобальный может быть без настроек
 const { createStatusUpdateService } = require('./services/StatusUpdateService');
 const service = createStatusUpdateService(config);
 
