@@ -123,7 +123,20 @@ function createParserRunner() {
                 if (!state.isRunning) break;
 
                 try {
-                    const rawData = await parser.parseListing(link);
+                    let rawData = null;
+                    try {
+                        rawData = await parser.parseListing(link);
+                    } catch (parseError) {
+                        // Если ошибка при парсинге, сохраняем её в БД
+                        await errorHandler.handleParsingError(parserName, parseError, {
+                            url: link,
+                            parserName,
+                            context: 'detail_parsing',
+                            carData: null // Данные не были получены
+                        });
+                        throw parseError; // Пробрасываем дальше
+                    }
+                    
                     if (rawData) {
                         try {
                             await saveData(rawData);
@@ -135,7 +148,13 @@ function createParserRunner() {
                             });
                         } catch (saveError) {
                             // Ошибки сохранения в БД не должны прерывать работу парсера
-                            // Они уже обработаны в saveData.js
+                            // Но сохраняем ошибку для последующей обработки
+                            await errorHandler.handleParsingError(parserName, saveError, {
+                                url: link,
+                                parserName,
+                                context: 'data_saving',
+                                carData: rawData // Сохраняем частично спарсенные данные
+                            });
                             console.warn(`⚠️ Не удалось сохранить данные для ${link}, продолжаем работу...`);
                         }
                         processedCount++;
@@ -163,10 +182,23 @@ function createParserRunner() {
                 } catch (error) {
                     errorCount++;
                     console.error(`❌ Ошибка обработки: ${error.message}`);
+                    
+                    // Пытаемся получить частично спарсенные данные, если они есть
+                    let partialCarData = null;
+                    try {
+                        const rawData = await parser.parseListing(link);
+                        if (rawData) {
+                            partialCarData = rawData;
+                        }
+                    } catch (parseError) {
+                        // Игнорируем ошибку парсинга, так как мы уже в блоке catch
+                    }
+                    
                     await errorHandler.handleParsingError(parserName, error, {
                         url: link,
                         parserName,
-                        context: 'listing_processing'
+                        context: 'listing_processing',
+                        carData: partialCarData
                     });
                     
                     // Уведомление о накоплении ошибок (каждые 5 ошибок)

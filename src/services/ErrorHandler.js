@@ -1,5 +1,6 @@
 const { loggerService } = require('./LoggerService');
 const { telegramService } = require('./TelegramService');
+const { parsingErrorService } = require('./ParsingErrorService');
 
 /**
  * Создание обработчика ошибок (функциональный стиль)
@@ -201,6 +202,23 @@ function createErrorHandler(config = {}) {
             selector: context.selector || 'unknown',
             element: context.element || 'unknown'
         };
+
+        // Сохраняем ошибку в БД для последующей обработки
+        try {
+            await parsingErrorService.saveParsingError({
+                parserName,
+                url: context.url || 'unknown',
+                error,
+                errorType: 'parsing',
+                carData: context.carData || null,
+                context: parsingContext
+            });
+        } catch (saveError) {
+            // Не прерываем обработку, если не удалось сохранить ошибку
+            loggerService.logWarning('Не удалось сохранить ошибку парсинга в БД', {
+                error: saveError.message
+            });
+        }
 
         await handleParserError(parserName, error, parsingContext);
     }

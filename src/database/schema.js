@@ -65,6 +65,27 @@ const createUsersTable = `
 `;
 
 /**
+ * SQL для создания таблицы parsing_errors
+ * Хранит ошибки парсинга для последующей обработки
+ */
+const createParsingErrorsTable = `
+    CREATE TABLE IF NOT EXISTS parsing_errors (
+        id SERIAL PRIMARY KEY,
+        parser_name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        error_type TEXT NOT NULL,
+        error_name TEXT,
+        error_message TEXT NOT NULL,
+        error_stack TEXT,
+        car_data JSONB,
+        context JSONB,
+        is_processed BOOLEAN DEFAULT false,
+        processed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+`;
+
+/**
  * SQL для создания индексов
  */
 const createIndexes = [
@@ -77,7 +98,12 @@ const createIndexes = [
     `CREATE INDEX IF NOT EXISTS idx_car_listings_status ON car_listings(status);`,
     `CREATE INDEX IF NOT EXISTS idx_car_photos_listing_id ON car_photos(listing_id);`,
     `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
-    `CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`
+    `CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`,
+    `CREATE INDEX IF NOT EXISTS idx_parsing_errors_parser_name ON parsing_errors(parser_name);`,
+    `CREATE INDEX IF NOT EXISTS idx_parsing_errors_url ON parsing_errors(url);`,
+    `CREATE INDEX IF NOT EXISTS idx_parsing_errors_error_type ON parsing_errors(error_type);`,
+    `CREATE INDEX IF NOT EXISTS idx_parsing_errors_is_processed ON parsing_errors(is_processed);`,
+    `CREATE INDEX IF NOT EXISTS idx_parsing_errors_created_at ON parsing_errors(created_at);`
 ];
 
 /**
@@ -106,7 +132,8 @@ const fullSchema = {
     tables: {
         car_listings: createCarListingsTable,
         car_photos: createCarPhotosTable,
-        users: createUsersTable
+        users: createUsersTable,
+        parsing_errors: createParsingErrorsTable
     },
     indexes: createIndexes,
     triggers: createTriggers
@@ -120,7 +147,8 @@ function getCreateTablesSQL() {
     return [
         createCarListingsTable,
         createCarPhotosTable,
-        createUsersTable
+        createUsersTable,
+        createParsingErrorsTable
     ];
 }
 
@@ -154,6 +182,7 @@ function getFullSchema() {
  */
 function getDropTablesSQL() {
     return [
+        'DROP TABLE IF EXISTS parsing_errors CASCADE;',
         'DROP TABLE IF EXISTS car_photos CASCADE;',
         'DROP TABLE IF EXISTS car_listings CASCADE;',
         'DROP TABLE IF EXISTS users CASCADE;'
@@ -169,7 +198,7 @@ function getCheckTablesSQL() {
         `SELECT table_name 
          FROM information_schema.tables 
          WHERE table_schema = 'public' 
-         AND table_name IN ('car_listings', 'car_photos', 'users');`
+         AND table_name IN ('car_listings', 'car_photos', 'users', 'parsing_errors');`
     ];
 }
 
@@ -177,6 +206,7 @@ module.exports = {
     createCarListingsTable,
     createCarPhotosTable,
     createUsersTable,
+    createParsingErrorsTable,
     createIndexes,
     createTriggers,
     fullSchema,
