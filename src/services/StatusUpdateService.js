@@ -2,6 +2,7 @@ const pool = require('../db');
 const axios = require('axios');
 const { loggerService } = require('./LoggerService');
 const { startBrowser, createStealthContext } = require('../utils/browser');
+const { telegramService } = require('./TelegramService');
 
 /**
  * Создание сервиса для актуализации статусов автомобилей
@@ -29,7 +30,9 @@ function createStatusUpdateService(config = {}) {
             sold: 0,
             active: 0,
             updated: 0,
-            errors: 0
+            errors: 0,
+            recentlyAdded: 0,
+            longSelling: 0
         }
     };
 
@@ -117,15 +120,28 @@ function createStatusUpdateService(config = {}) {
                 return { available: false, status: 404, sold: true };
             }
 
-            // Другие ошибки - считаем недоступным, но не проданным
+            // Другие ошибки - если ссылка не открывается, считаем проданным
+            // (кроме таймаутов и сетевых ошибок после всех попыток)
+            const isNetworkError = error.code === 'ECONNRESET' || 
+                                   error.code === 'ETIMEDOUT' || 
+                                   error.code === 'ENOTFOUND' ||
+                                   error.message.includes('timeout');
+            
             loggerService.logWarning('Ошибка при проверке URL', {
                 url,
                 error: error.message,
                 code: error.code,
-                status: error.response?.status
+                status: error.response?.status,
+                isNetworkError
             });
 
-            return { available: false, status: error.response?.status || 0, sold: false, error: error.message };
+            // Если это не сетевая ошибка после всех попыток - считаем проданным
+            return { 
+                available: false, 
+                status: error.response?.status || 0, 
+                sold: !isNetworkError || retries >= state.config.maxRetries, 
+                error: error.message 
+            };
         }
     }
 
@@ -173,37 +189,45 @@ function createStatusUpdateService(config = {}) {
 
             loggerService.logWarning('Ошибка при проверке URL через браузер', {
                 url,
-                error: error.message
+                error: error.message,
+                retries
             });
 
-            return { available: false, status: 0, sold: false, error: error.message };
+            // Если ссылка не открывается после всех попыток - считаем проданным
+            const isSold = retries >= state.config.maxRetries;
+            return { available: false, status: 0, sold: isSold, error: error.message };
         }
     }
 
     /**
      * Определение статуса на основе даты создания и доступности
+     * Логика:
+     * 1. Если 404 или не открывается - "Продано"
+     * 2. Если висит больше 1 месяца (30 дней) - "Долго продается"
+     * 3. Если недавно спарсилось - "Появилось недавно"
+     * 4. Иначе - "Активно"
      */
-    function determineStatus(createdAt, isAvailable, isSold) {
-        if (isSold) {
+    function determineStatus(createdAt, isAvailable, isSold, hasError = false) {
+        // 1. Если 404 или не открывается - "Продано"
+        if (isSold || !isAvailable || hasError) {
             return 'Продано';
-        }
-
-        if (!isAvailable) {
-            return 'Активно'; // Если недоступно, но не 404, оставляем активным
         }
 
         const now = new Date();
         const created = new Date(createdAt);
         const daysSinceCreation = Math.floor((now - created) / (1000 * 60 * 60 * 24));
 
-        if (daysSinceCreation < state.config.recentDays) {
-            return 'Появилось недавно';
-        }
-
+        // 2. Если висит больше 1 месяца (30 дней) - "Долго продается"
         if (daysSinceCreation >= state.config.longSellingDays) {
             return 'Долго продается';
         }
 
+        // 3. Если недавно спарсилось - "Появилось недавно"
+        if (daysSinceCreation < state.config.recentDays) {
+            return 'Появилось недавно';
+        }
+
+        // 4. Иначе - "Активно"
         return 'Активно';
     }
 
@@ -358,10 +382,12 @@ function createStatusUpdateService(config = {}) {
 
             const urlCheckResult = await checkMethod(car.short_url);
             
+            const hasError = !urlCheckResult.available && !urlCheckResult.sold && urlCheckResult.error;
             const newStatus = determineStatus(
                 car.created_at,
                 urlCheckResult.available,
-                urlCheckResult.sold
+                urlCheckResult.sold,
+                hasError
             );
 
             // Обновляем статус только если он изменился
@@ -372,10 +398,14 @@ function createStatusUpdateService(config = {}) {
 
             // Обновляем статистику
             state.stats.checked++;
-            if (urlCheckResult.sold) {
+            if (newStatus === 'Продано') {
                 state.stats.sold++;
-            } else if (urlCheckResult.available) {
+            } else if (newStatus === 'Активно') {
                 state.stats.active++;
+            } else if (newStatus === 'Появилось недавно') {
+                state.stats.recentlyAdded++;
+            } else if (newStatus === 'Долго продается') {
+                state.stats.longSelling++;
             }
 
             // Задержка между запросами
@@ -428,7 +458,9 @@ function createStatusUpdateService(config = {}) {
                 sold: 0,
                 active: 0,
                 updated: 0,
-                errors: 0
+                errors: 0,
+                recentlyAdded: 0,
+                longSelling: 0
             };
 
             let offset = 0;
@@ -461,15 +493,24 @@ function createStatusUpdateService(config = {}) {
                 offset += cars.length;
                 hasMore = cars.length === actualBatchSize;
 
-                // Логируем прогресс
+                // Логируем прогресс и отправляем промежуточные уведомления каждые 500 проверенных
+                if (state.stats.checked % 500 === 0 && state.stats.checked > 0) {
+                    await sendTelegramNotification();
+                }
+
                 loggerService.logInfo('Прогресс актуализации', {
                     checked: state.stats.checked,
                     updated: state.stats.updated,
                     sold: state.stats.sold,
                     active: state.stats.active,
+                    recentlyAdded: state.stats.recentlyAdded,
+                    longSelling: state.stats.longSelling,
                     errors: state.stats.errors
                 });
             }
+
+            // Отправляем финальную статистику в Telegram
+            await sendTelegramNotification();
 
             loggerService.logInfo('StatusUpdateService завершен', state.stats);
         } catch (error) {
@@ -561,6 +602,39 @@ function createStatusUpdateService(config = {}) {
     }
 
     /**
+     * Отправка уведомления о результатах работы в Telegram
+     */
+    async function sendTelegramNotification() {
+        try {
+            const stats = state.stats;
+            const telegramStatus = telegramService.getStatus();
+            
+            if (!telegramStatus || !telegramStatus.enabled) {
+                loggerService.logInfo('Telegram не включен, пропускаем уведомление');
+                return;
+            }
+
+            const message = `📊 *Статистика актуализации статусов*\n\n` +
+                `✅ Проверено: ${stats.checked}\n` +
+                `🔄 Обновлено статусов: ${stats.updated}\n\n` +
+                `📈 *Распределение статусов:*\n` +
+                `🟢 Активно: ${stats.active}\n` +
+                `🆕 Появилось недавно: ${stats.recentlyAdded}\n` +
+                `⏰ Долго продается: ${stats.longSelling}\n` +
+                `❌ Продано: ${stats.sold}\n` +
+                `⚠️ Ошибок: ${stats.errors}\n\n` +
+                `⏱️ Время: ${new Date().toLocaleString('ru-RU')}`;
+
+            await telegramService.sendMessage(message);
+            loggerService.logInfo('Уведомление о статистике отправлено в Telegram');
+        } catch (error) {
+            loggerService.logWarning('Не удалось отправить уведомление в Telegram', {
+                error: error.message
+            });
+        }
+    }
+
+    /**
      * Получение статистики
      */
     function getStats() {
@@ -572,7 +646,8 @@ function createStatusUpdateService(config = {}) {
         startCycling,
         stop,
         getStats,
-        processCar
+        processCar,
+        sendTelegramNotification
     };
 }
 
