@@ -428,7 +428,7 @@ function createStatusUpdateService(config = {}) {
     /**
      * Запуск процесса актуализации статусов
      */
-    async function start(batchSize = null) {
+    async function start(batchSize = null, sendStartMsg = true) {
         if (state.isRunning) {
             loggerService.logWarning('StatusUpdateService уже запущен');
             return;
@@ -445,6 +445,11 @@ function createStatusUpdateService(config = {}) {
 
             // Проверяем и добавляем колонку status, если её нет
             await ensureStatusColumn();
+
+            // Отправляем уведомление о запуске только если это первый запуск
+            if (sendStartMsg) {
+                await sendStartNotification('single');
+            }
 
             // Инициализируем браузер, если нужно
             if (state.config.useBrowser) {
@@ -535,14 +540,23 @@ function createStatusUpdateService(config = {}) {
 
         state.isRunning = true;
         const intervalMs = intervalMinutes * 60 * 1000;
+        
+        // Сохраняем интервал в конфиге для уведомлений
+        state.config.intervalMinutes = intervalMinutes;
 
         loggerService.logInfo('Запуск циклического режима StatusUpdateService', {
             intervalMinutes,
             intervalMs
         });
 
-        // Запускаем первый цикл сразу
-        await start();
+        // Проверяем и добавляем колонку status, если её нет
+        await ensureStatusColumn();
+
+        // Отправляем уведомление о запуске
+        await sendStartNotification('cycle');
+
+        // Запускаем первый цикл сразу (без повторного уведомления о запуске)
+        await start(null, false);
 
         // Затем запускаем циклически
         const cycle = async () => {
@@ -599,6 +613,39 @@ function createStatusUpdateService(config = {}) {
         loggerService.logInfo('Остановка StatusUpdateService');
         state.isRunning = false;
         await closeBrowser();
+    }
+
+    /**
+     * Отправка уведомления о запуске сервиса в Telegram
+     */
+    async function sendStartNotification(mode = 'single') {
+        try {
+            const telegramStatus = telegramService.getStatus();
+            
+            if (!telegramStatus || !telegramStatus.enabled) {
+                loggerService.logInfo('Telegram не включен, пропускаем уведомление о запуске');
+                return;
+            }
+
+            const modeText = mode === 'cycle' ? 'циклический режим' : 'одиночный режим';
+            const intervalText = mode === 'cycle' && state.config.intervalMinutes 
+                ? `\n⏰ Интервал между циклами: ${state.config.intervalMinutes} минут`
+                : '';
+
+            const message = `🚀 *Сервис актуализации статусов запущен*\n\n` +
+                `📊 Режим: ${modeText}\n` +
+                `📦 Размер батча: ${state.config.batchSize}\n` +
+                `⏱️ Задержка между запросами: ${state.config.delayBetweenRequests}мс` +
+                intervalText + `\n\n` +
+                `⏱️ Время запуска: ${new Date().toLocaleString('ru-RU')}`;
+
+            await telegramService.sendMessage(message);
+            loggerService.logInfo('Уведомление о запуске отправлено в Telegram');
+        } catch (error) {
+            loggerService.logWarning('Не удалось отправить уведомление о запуске в Telegram', {
+                error: error.message
+            });
+        }
     }
 
     /**
